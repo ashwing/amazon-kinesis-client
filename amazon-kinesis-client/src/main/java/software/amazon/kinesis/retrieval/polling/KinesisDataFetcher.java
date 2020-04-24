@@ -227,6 +227,7 @@ public class KinesisDataFetcher implements DataFetcher {
 
         // TODO: Check if this metric is fine to be added
         final MetricsScope metricsScope = MetricsUtil.createMetricsWithOperation(metricsFactory, OPERATION);
+        MetricsUtil.addStreamId(metricsScope, streamIdentifier);
         MetricsUtil.addShardId(metricsScope, shardId);
         boolean success = false;
         long startTime = System.currentTimeMillis();
@@ -304,6 +305,7 @@ public class KinesisDataFetcher implements DataFetcher {
         GetRecordsRequest request = getGetRecordsRequest(nextIterator);
 
         final MetricsScope metricsScope = MetricsUtil.createMetricsWithOperation(metricsFactory, OPERATION);
+        MetricsUtil.addStreamId(metricsScope, streamIdentifier);
         MetricsUtil.addShardId(metricsScope, shardId);
         boolean success = false;
         long startTime = System.currentTimeMillis();
