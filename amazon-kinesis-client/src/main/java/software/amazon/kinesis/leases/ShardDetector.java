@@ -16,6 +16,8 @@
 package software.amazon.kinesis.leases;
 
 import java.util.List;
+import software.amazon.awssdk.services.kinesis.model.ListShardsRequest;
+import software.amazon.awssdk.services.kinesis.model.ListShardsResponse;
 import software.amazon.awssdk.services.kinesis.model.Shard;
 import software.amazon.kinesis.common.StreamIdentifier;
 
@@ -23,11 +25,36 @@ import software.amazon.kinesis.common.StreamIdentifier;
  *
  */
 public interface ShardDetector {
+
+    /**
+     * Gets shard based on shardId.
+     *
+     * @param shardId
+     * @return Shard
+     */
     Shard shard(String shardId);
 
+    /**
+     * List shards.
+     *
+     * @return Shards
+     */
     List<Shard> listShards();
 
+    /**
+     * Gets stream identifier.
+     *
+     * @return StreamIdentifier
+     */
     default StreamIdentifier streamIdentifier() {
         throw new UnsupportedOperationException("StreamName not available");
     }
+
+    /**
+     * Gets a list shards response based on the request.
+     *
+     * @param request list shards request
+     * @return ListShardsResponse which contains list shards response
+     */
+    ListShardsResponse getListShardsResponse(ListShardsRequest request) throws Exception;
 }
