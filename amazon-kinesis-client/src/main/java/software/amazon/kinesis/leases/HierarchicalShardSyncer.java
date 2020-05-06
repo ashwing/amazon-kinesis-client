@@ -106,7 +106,6 @@ public class HierarchicalShardSyncer {
      * @param leaseRefresher
      * @param initialPosition
      * @param scope
-     * @param cleanupLeasesOfCompletedShards
      * @param ignoreUnexpectedChildShards
      * @param garbageCollectLeases
      * @throws DependencyException
@@ -117,19 +116,19 @@ public class HierarchicalShardSyncer {
     // CHECKSTYLE:OFF CyclomaticComplexity
     public synchronized void checkAndCreateLeaseForNewShards(@NonNull final ShardDetector shardDetector,
             final LeaseRefresher leaseRefresher, final InitialPositionInStreamExtended initialPosition,
-            final MetricsScope scope, final boolean cleanupLeasesOfCompletedShards, final boolean ignoreUnexpectedChildShards,
+            final MetricsScope scope, final boolean ignoreUnexpectedChildShards,
             final boolean garbageCollectLeases, final boolean isLeaseTableEmpty)
             throws DependencyException, InvalidStateException, ProvisionedThroughputException, KinesisClientLibIOException, InterruptedException {
         final List<Shard> latestShards = isLeaseTableEmpty ?
                 getShardListAtInitialPosition(shardDetector, initialPosition) : getShardList(shardDetector);
-        checkAndCreateLeaseForNewShards(shardDetector, leaseRefresher, initialPosition, latestShards, cleanupLeasesOfCompletedShards, ignoreUnexpectedChildShards, scope, garbageCollectLeases,
+        checkAndCreateLeaseForNewShards(shardDetector, leaseRefresher, initialPosition, latestShards, ignoreUnexpectedChildShards, scope, garbageCollectLeases,
                 isLeaseTableEmpty);
     }
 
     //Provide a pre-collcted list of shards to avoid calling ListShards API
     public synchronized void checkAndCreateLeaseForNewShards(@NonNull final ShardDetector shardDetector,
             final LeaseRefresher leaseRefresher, final InitialPositionInStreamExtended initialPosition,
-            List<Shard> latestShards, final boolean cleanupLeasesOfCompletedShards, final boolean ignoreUnexpectedChildShards,
+            List<Shard> latestShards, final boolean ignoreUnexpectedChildShards,
             final MetricsScope scope, final boolean garbageCollectLeases, final boolean isLeaseTableEmpty)
             throws DependencyException, InvalidStateException, ProvisionedThroughputException, KinesisClientLibIOException {
 
@@ -168,10 +167,6 @@ public class HierarchicalShardSyncer {
         trackedLeases.addAll(newLeasesToCreate);
         if (!isLeaseTableEmpty && garbageCollectLeases) {
             cleanupGarbageLeases(shardDetector, latestShards, trackedLeases, leaseRefresher, multiStreamArgs);
-        }
-        if (!isLeaseTableEmpty && cleanupLeasesOfCompletedShards) {
-            cleanupLeasesOfFinishedShards(currentLeases, shardIdToShardMap, shardIdToChildShardIdsMap, trackedLeases,
-                    leaseRefresher, multiStreamArgs);
         }
     }
 
@@ -701,55 +696,8 @@ public class HierarchicalShardSyncer {
 
         return isCandidateForCleanup;
     }
-    
+
     /**
-     * Private helper method.
-     * Clean up leases for shards that meet the following criteria:
-     * a/ the shard has been fully processed (checkpoint is set to SHARD_END)
-     * b/ we've begun processing all the child shards: we have leases for all child shards and their checkpoint is not
-     *      TRIM_HORIZON.
-     * 
-     * @param currentLeases List of leases we evaluate for clean up
-     * @param shardIdToShardMap Map of shardId->Shard (assumed to include all Kinesis shards)
-     * @param shardIdToChildShardIdsMap Map of shardId->childShardIds (assumed to include all Kinesis shards)
-     * @param trackedLeases List of all leases we are tracking.
-     * @param leaseRefresher Lease refresher (will be used to delete leases)
-     * @throws DependencyException
-     * @throws InvalidStateException
-     * @throws ProvisionedThroughputException
-     * @throws KinesisClientLibIOException
-     */
-    private synchronized void cleanupLeasesOfFinishedShards(final Collection<Lease> currentLeases,
-            final Map<String, Shard> shardIdToShardMap, final Map<String, Set<String>> shardIdToChildShardIdsMap,
-            final List<Lease> trackedLeases, final LeaseRefresher leaseRefresher,
-            final MultiStreamArgs multiStreamArgs) throws DependencyException,
-            InvalidStateException, ProvisionedThroughputException, KinesisClientLibIOException {
-        final List<Lease> leasesOfClosedShards = currentLeases.stream()
-                .filter(lease -> lease.checkpoint().equals(ExtendedSequenceNumber.SHARD_END))
-                .collect(Collectors.toList());
-        final Set<String> shardIdsOfClosedShards = leasesOfClosedShards.stream()
-                .map(lease -> shardIdFromLeaseDeducer.apply(lease, multiStreamArgs)).collect(Collectors.toSet());
-
-        if (!CollectionUtils.isNullOrEmpty(leasesOfClosedShards)) {
-            assertClosedShardsAreCoveredOrAbsent(shardIdToShardMap, shardIdToChildShardIdsMap, shardIdsOfClosedShards);
-            //TODO: Verify before LTR launch that ending sequence number is still returned from the service.
-            Comparator<? super Lease> startingSequenceNumberComparator = new StartingSequenceNumberAndShardIdBasedComparator(
-                    shardIdToShardMap, multiStreamArgs);
-            leasesOfClosedShards.sort(startingSequenceNumberComparator);
-            final Map<String, Lease> trackedLeaseMap = trackedLeases.stream()
-                    .collect(Collectors.toMap(lease -> shardIdFromLeaseDeducer.apply(lease, multiStreamArgs), Function.identity()));
-
-            for (Lease leaseOfClosedShard : leasesOfClosedShards) {
-                final String closedShardId = shardIdFromLeaseDeducer.apply(leaseOfClosedShard, multiStreamArgs);
-                final Set<String> childShardIds = shardIdToChildShardIdsMap.get(closedShardId);
-                if (closedShardId != null && !CollectionUtils.isNullOrEmpty(childShardIds)) {
-                    cleanupLeaseForClosedShard(closedShardId, childShardIds, trackedLeaseMap, leaseRefresher, multiStreamArgs);
-                }
-            }
-        }        
-    }
-
-    /** 
      * Delete lease for the closed shard. Rules for deletion are:
      * a/ the checkpoint for the closed shard is SHARD_END,
      * b/ there are leases for all the childShardIds and their checkpoint is NOT TRIM_HORIZON
