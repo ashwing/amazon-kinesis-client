@@ -90,7 +90,6 @@ public class HierarchicalShardSyncerTest {
             MULTISTREAM_MODE_ON, StreamIdentifier.multiStreamInstance(STREAM_IDENTIFIER));
 
     private final boolean garbageCollectLeases = true;
-    private final boolean cleanupLeasesOfCompletedShards = true;
     private final boolean ignoreUnexpectedChildShards = false;
 
     private HierarchicalShardSyncer hierarchicalShardSyncer;
