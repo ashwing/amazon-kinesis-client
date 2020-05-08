@@ -32,7 +32,7 @@ public class SimpleRecordsFetcherFactory implements RecordsFetcherFactory {
     private int maxPendingProcessRecordsInput = 3;
     private int maxByteSize = 8 * 1024 * 1024;
     private int maxRecordsCount = 30000;
-    private long idleMillisBetweenCalls = 1500L;
+    private long idleMillisBetweenCalls = 200L;
     private DataFetchingStrategy dataFetchingStrategy = DataFetchingStrategy.DEFAULT;
 
     @Override
