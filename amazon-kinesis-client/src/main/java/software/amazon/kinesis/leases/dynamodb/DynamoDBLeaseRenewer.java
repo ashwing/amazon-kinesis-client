@@ -173,8 +173,9 @@ public class DynamoDBLeaseRenewer implements LeaseRenewer {
         boolean success = false;
         boolean renewedLease = false;
         long startTime = System.currentTimeMillis();
+        int i = 1;
         try {
-            for (int i = 1; i <= RENEWAL_RETRIES; i++) {
+            for (; i <= RENEWAL_RETRIES; i++) {
                 try {
                     synchronized (lease) {
                         // Don't renew expired lease during regular renewals. getCopyOfHeldLease may have returned null
@@ -208,6 +209,7 @@ public class DynamoDBLeaseRenewer implements LeaseRenewer {
         } finally {
             MetricsUtil.addWorkerIdentifier(scope, workerIdentifier);
             MetricsUtil.addSuccessAndLatency(scope, "RenewLease", success, startTime, MetricsLevel.DETAILED);
+            MetricsUtil.addCount(scope, "RetryCount", i, MetricsLevel.DETAILED);
             MetricsUtil.endScope(scope);
         }
 

@@ -21,7 +21,6 @@ import software.amazon.kinesis.annotations.KinesisClientInternalApi;
 import software.amazon.kinesis.checkpoint.Checkpoint;
 import software.amazon.kinesis.checkpoint.ShardRecordProcessorCheckpointer;
 import software.amazon.kinesis.common.InitialPositionInStreamExtended;
-import software.amazon.kinesis.leases.MultiStreamLease;
 import software.amazon.kinesis.leases.ShardInfo;
 import software.amazon.kinesis.lifecycle.events.InitializationInput;
 import software.amazon.kinesis.metrics.MetricsFactory;
@@ -71,8 +70,9 @@ public class InitializeTask implements ConsumerTask {
      */
     @Override
     public TaskResult call() {
+        Exception exception;
         boolean applicationException = false;
-        Exception exception = null;
+        boolean initializeSuccess = false;
 
         try {
             log.debug("Initializing ShardId {}", shardInfo);
@@ -101,12 +101,17 @@ public class InitializeTask implements ConsumerTask {
             final long startTime = System.currentTimeMillis();
             try {
                 shardRecordProcessor.initialize(initializationInput);
+                initializeSuccess = true;
                 log.debug("Record processor initialize() completed.");
             } catch (Exception e) {
                 applicationException = true;
                 throw e;
             } finally {
-                MetricsUtil.addLatency(scope, RECORD_PROCESSOR_INITIALIZE_METRIC, startTime, MetricsLevel.SUMMARY);
+                MetricsUtil.addSuccessAndLatency(scope,
+                        RECORD_PROCESSOR_INITIALIZE_METRIC,
+                        initializeSuccess,
+                        startTime,
+                        MetricsLevel.SUMMARY);
                 MetricsUtil.endScope(scope);
             }
 
