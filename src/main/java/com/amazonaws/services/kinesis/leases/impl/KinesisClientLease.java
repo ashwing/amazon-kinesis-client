@@ -30,6 +30,7 @@ public class KinesisClientLease extends Lease {
     private ExtendedSequenceNumber pendingCheckpoint;
     private Long ownerSwitchesSinceCheckpoint = 0L;
     private Set<String> parentShardIds = new HashSet<String>();
+    private HashKeyRangeForLease hashKeyRangeForLease;
 
     public KinesisClientLease() {
 
@@ -41,17 +42,19 @@ public class KinesisClientLease extends Lease {
         this.pendingCheckpoint = other.getPendingCheckpoint();
         this.ownerSwitchesSinceCheckpoint = other.getOwnerSwitchesSinceCheckpoint();
         this.parentShardIds.addAll(other.getParentShardIds());
+        this.hashKeyRangeForLease = other.hashKeyRangeForLease;
     }
 
     KinesisClientLease(String leaseKey, String leaseOwner, Long leaseCounter, UUID concurrencyToken,
             Long lastCounterIncrementNanos, ExtendedSequenceNumber checkpoint, ExtendedSequenceNumber pendingCheckpoint,
-            Long ownerSwitchesSinceCheckpoint, Set<String> parentShardIds) {
+            Long ownerSwitchesSinceCheckpoint, Set<String> parentShardIds, HashKeyRangeForLease hashKeyRangeForLease) {
         super(leaseKey, leaseOwner, leaseCounter, concurrencyToken, lastCounterIncrementNanos);
 
         this.checkpoint = checkpoint;
         this.pendingCheckpoint = pendingCheckpoint;
         this.ownerSwitchesSinceCheckpoint = ownerSwitchesSinceCheckpoint;
         this.parentShardIds.addAll(parentShardIds);
+        this.hashKeyRangeForLease = hashKeyRangeForLease;
     }
 
     /**
@@ -101,6 +104,13 @@ public class KinesisClientLease extends Lease {
     }
 
     /**
+     * @return hash key range that this lease covers.
+     */
+    public HashKeyRangeForLease getHashKeyRange() {
+        return hashKeyRangeForLease;
+    }
+
+    /**
      * Sets checkpoint.
      * 
      * @param checkpoint may not be null
@@ -141,6 +151,17 @@ public class KinesisClientLease extends Lease {
 
         this.parentShardIds.clear();
         this.parentShardIds.addAll(parentShardIds);
+    }
+
+    /**
+     * Sets hashKeyRangeForLease.
+     *
+     * @param hashKeyRangeForLease may not be null
+     */
+    public void setHashKeyRange(HashKeyRangeForLease hashKeyRangeForLease) {
+        verifyNotNull(hashKeyRangeForLease, "hashKeyRangeForLease should not be null");
+
+        this.hashKeyRangeForLease = hashKeyRangeForLease;
     }
     
     private void verifyNotNull(Object object, String message) {
