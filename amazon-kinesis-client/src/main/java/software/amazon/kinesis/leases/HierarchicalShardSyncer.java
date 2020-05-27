@@ -488,12 +488,12 @@ public class HierarchicalShardSyncer {
 
                 for (String parentShardId : parentShardIds) {
                     // Check if the parent is a descendant, and include its ancestors. Or, if the parent is NOT a
-                    // descendant but should we should create a lease for it anyway (e.g. to include in processing from
+                    // descendant but we should create a lease for it anyway (e.g. to include in processing from
                     // TRIM_HORIZON or AT_TIMESTAMP). If either is true, we consider the current shard to be a descendant.
-                    if (checkIfDescendantAndAddNewLeasesForAncestors(parentShardId, initialPosition,
-                            shardIdsOfCurrentLeases, shardIdToShardMapOfAllKinesisShards, shardIdToLeaseMapOfNewShards,
-                            memoizationContext, multiStreamArgs) ||
-                            memoizationContext.shouldCreateLease(parentShardId)) {
+                    final boolean isParentDescendant = checkIfDescendantAndAddNewLeasesForAncestors(parentShardId,
+                            initialPosition, shardIdsOfCurrentLeases, shardIdToShardMapOfAllKinesisShards,
+                            shardIdToLeaseMapOfNewShards, memoizationContext, multiStreamArgs);
+                    if (isParentDescendant || memoizationContext.shouldCreateLease(parentShardId)) {
                         isDescendant = true;
                         descendantParentShardIds.add(parentShardId);
                         log.debug("{} : Parent shard {} is a descendant.", streamIdentifier, parentShardId);
@@ -1151,7 +1151,7 @@ public class HierarchicalShardSyncer {
                 } else if (inconsistentShardIds.contains(shardId)) {
                     log.info("{} : shardId {} is an inconsistent child.  Not creating a lease", streamIdentifier, shardId);
                 } else {
-                    log.debug("{} : Need to create a lease in ancestry tree for shardId {}", streamIdentifier, shardId);
+                    log.debug("{} : Beginning traversal of ancestry tree for shardId {}", streamIdentifier, shardId);
 
                     // A shard is a descendant if at least one if its ancestors exists in the lease table.
                     // We will create leases for only one level in the ancestry tree. Once we find the first ancestor
@@ -1162,7 +1162,7 @@ public class HierarchicalShardSyncer {
                             memoizationContext, multiStreamArgs);
 
                     // If shard is a descendant, the leases for its ancestors were already created above. Open shards
-                    // that are NOT descendants will not have been created yet, so we do so here. We will not create
+                    // that are NOT descendants will not have leases yet, so we create them here. We will not create
                     // leases for open shards that ARE descendants yet - leases for these shards will be created upon
                     // SHARD_END of their parents.
                     if (!isDescendant) {
@@ -1173,6 +1173,9 @@ public class HierarchicalShardSyncer {
                         newLease.checkpoint(convertToCheckpoint(initialPosition));
                         log.debug("{} : Set checkpoint of {} to {}", streamIdentifier, newLease.leaseKey(), newLease.checkpoint());
                         shardIdToNewLeaseMap.put(shardId, newLease);
+                    } else {
+                        log.debug("{} : shardId {} is a descendant whose ancestors should already have leases. " +
+                                "Not creating a lease.", streamIdentifier, shardId);
                     }
                 }
             }
