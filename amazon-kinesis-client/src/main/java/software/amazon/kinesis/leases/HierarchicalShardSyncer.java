@@ -466,7 +466,7 @@ public class HierarchicalShardSyncer {
             final InitialPositionInStreamExtended initialPosition, final Set<String> shardIdsOfCurrentLeases,
             final Map<String, Shard> shardIdToShardMapOfAllKinesisShards,
             final Map<String, Lease> shardIdToLeaseMapOfNewShards, final MemoizationContext memoizationContext,
-            final MultiStreamArgs multiStreamArgs, Map<String, Set<String>> shardIdToChildShardIdsMap) {
+            final MultiStreamArgs multiStreamArgs) {
         final String streamIdentifier = getStreamIdentifier(multiStreamArgs);
         final Boolean previousValue = memoizationContext.isDescendant(shardId);
         if (previousValue != null) {
@@ -483,65 +483,20 @@ public class HierarchicalShardSyncer {
                 // We don't need to add leases of its ancestors,
                 // because we'd have done it when creating a lease for this shard.
             } else {
+
                 final Shard shard = shardIdToShardMapOfAllKinesisShards.get(shardId);
-
-                final Set<String> childShardIds = shardIdToChildShardIdsMap.get(shardId);
-                if (childShardIds != null && childShardIds.size() == 2) {
-                    /**
-                     * If one child shard has a lease but the other doesn't, mark the other for lease creation. This is
-                     * to avoid traversing back to beginning-of-time since current shard is not a descendant. E.g.
-                     *
-                     * Shard structure (x-axis is epochs):
-                     * 0  3   6   9
-                     * \ / \ / \ /
-                     *  2   5   8
-                     * / \ / \ / \
-                     * 1  4   7  10
-                     *
-                     * Current leases: (6)
-                     * Initial position: TRIM_HORIZON
-                     * Expected leases: (7)
-                     *
-                     * Without this optimization, we might bypass shard 6 (the descendant) without ever hitting
-                     * another descendant, thereby creating leases from the beginning of time. For example, the
-                     * traversal 10 -> 8 -> 7 -> 5 -> 3 -> 2 will create leases for shards 0 and 1, which could
-                     * cause records to be read out of order since we already are processing shard 6.
-                     */
-                    final Iterator<String> itr = childShardIds.iterator();
-                    final String childShardId1 = itr.next();
-                    final String childShardId2 = itr.next();
-                    if (shardIdsOfCurrentLeases.contains(childShardId1) && !shardIdsOfCurrentLeases.contains(childShardId2)) {
-                        memoizationContext.setShouldCreateLease(childShardId2, true);
-                        log.debug("{} : Child shard {} is NOT a descendant, but creating lease anyway.",
-                                streamIdentifier, childShardId2);
-                        return isDescendant;
-                    }
-                    if (!shardIdsOfCurrentLeases.contains(childShardId1) && shardIdsOfCurrentLeases.contains(childShardId2)) {
-                        memoizationContext.setShouldCreateLease(childShardId1, true);
-                        log.debug("{} : Child shard {} is NOT a descendant, but creating lease anyway.",
-                                streamIdentifier, childShardId1);
-                        return isDescendant;
-                    }
-                }
-
                 final Set<String> parentShardIds = getParentShardIds(shard, shardIdToShardMapOfAllKinesisShards);
                 for (String parentShardId : parentShardIds) {
                     // Check if the parent is a descendant, and include its ancestors. Or, if the parent is NOT a
                     // descendant but we should create a lease for it anyway (e.g. to include in processing from
-                    // TRIM_HORIZON or AT_TIMESTAMP), then we mark it as a descendant.
+                    // TRIM_HORIZON or AT_TIMESTAMP). If either is true, then we mark the current shard as a descendant.
                     final boolean isParentDescendant = checkIfDescendantAndAddNewLeasesForAncestors(parentShardId,
                             initialPosition, shardIdsOfCurrentLeases, shardIdToShardMapOfAllKinesisShards,
-                            shardIdToLeaseMapOfNewShards, memoizationContext, multiStreamArgs, shardIdToChildShardIdsMap);
-                    if (isParentDescendant) {
+                            shardIdToLeaseMapOfNewShards, memoizationContext, multiStreamArgs);
+                    if (isParentDescendant || memoizationContext.shouldCreateLease(parentShardId)) {
                         isDescendant = true;
                         descendantParentShardIds.add(parentShardId);
                         log.debug("{} : Parent shard {} is a descendant.", streamIdentifier, parentShardId);
-                    } else if (memoizationContext.shouldCreateLease(parentShardId)) {
-                        // We mark as a descendant to create the lease below, but do not add to descendantParentShardIds
-                        // as this will change the checkpointing logic.
-                        isDescendant = true;
-                        log.debug("{} : Parent shard {} is NOT a descendant, but creating a lease anyway.",
-                                streamIdentifier, parentShardId);
                     } else {
                         log.debug("{} : Parent shard {} is NOT a descendant.", streamIdentifier, parentShardId);
                     }
@@ -634,7 +589,7 @@ public class HierarchicalShardSyncer {
             final Map<String, Lease> shardIdToLeaseMapOfNewShards, MemoizationContext memoizationContext) {
         return checkIfDescendantAndAddNewLeasesForAncestors(shardId, initialPosition, shardIdsOfCurrentLeases,
                 shardIdToShardMapOfAllKinesisShards, shardIdToLeaseMapOfNewShards, memoizationContext,
-                new MultiStreamArgs(false, null), Collections.emptyMap());
+                new MultiStreamArgs(false, null));
     }
 
     // CHECKSTYLE:ON CyclomaticComplexity
@@ -1203,7 +1158,7 @@ public class HierarchicalShardSyncer {
                     // further descendants of that ancestor.
                     final boolean isDescendant = checkIfDescendantAndAddNewLeasesForAncestors(shardId, initialPosition,
                             shardIdsOfCurrentLeases, shardIdToShardMapOfAllKinesisShards, shardIdToNewLeaseMap,
-                            memoizationContext, multiStreamArgs, shardIdToChildShardIdsMap);
+                            memoizationContext, multiStreamArgs);
 
                     // If shard is a descendant, the leases for its ancestors were already created above. Open shards
                     // that are NOT descendants will not have leases yet, so we create them here. We will not create
