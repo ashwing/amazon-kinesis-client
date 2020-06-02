@@ -15,6 +15,7 @@
 package com.amazonaws.services.kinesis.leases.impl;
 
 import com.amazonaws.services.kinesis.model.HashKeyRange;
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import lombok.NonNull;
 import lombok.Value;
 import lombok.experimental.Accessors;
@@ -24,6 +25,7 @@ import java.math.BigInteger;
 
 @Value
 @Accessors(fluent = true)
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 /**
  * Lease POJO to hold the starting hashkey range and ending hashkey range of kinesis shards.
  */
