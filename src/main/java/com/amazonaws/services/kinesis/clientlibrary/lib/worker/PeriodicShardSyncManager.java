@@ -72,7 +72,7 @@ class PeriodicShardSyncManager {
     @VisibleForTesting
     static final BigInteger MIN_HASH_KEY = BigInteger.ZERO;
     @VisibleForTesting
-    static final BigInteger MAX_HASH_KEY = new BigInteger("2").pow(123).subtract(BigInteger.ONE);
+    static final BigInteger MAX_HASH_KEY = new BigInteger("2").pow(128).subtract(BigInteger.ONE);
     @VisibleForTesting
     static final int CONSECUTIVE_HOLES_FOR_TRIGGERING_RECOVERY = 3;
     private final HashRangeHoleTracker hashRangeHoleTracker = new HashRangeHoleTracker();
