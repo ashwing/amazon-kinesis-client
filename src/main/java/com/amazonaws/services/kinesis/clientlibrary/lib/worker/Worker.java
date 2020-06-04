@@ -1259,7 +1259,7 @@ public class Worker implements Runnable {
     /** A non-null PeriodicShardSyncManager can only provided from unit tests. Any application code will create the
      * PeriodicShardSyncManager for the first time here. */
     private PeriodicShardSyncManager getOrCreatePeriodicShardSyncManager(PeriodicShardSyncManager periodicShardSyncManager,
-                                                                         boolean shouldSkipSyncIfHashRangeIsComplete) {
+                                                                         boolean isAuditorMode) {
         if (periodicShardSyncManager != null) {
             return periodicShardSyncManager;
         }
@@ -1277,7 +1277,7 @@ public class Worker implements Runnable {
                 metricsFactory,
                 leaseCoordinator.getLeaseManager(),
                 streamConfig.getStreamProxy(),
-                shouldSkipSyncIfHashRangeIsComplete);
+                isAuditorMode);
     }
 
     /**

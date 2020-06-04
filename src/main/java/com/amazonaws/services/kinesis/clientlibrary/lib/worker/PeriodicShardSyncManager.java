@@ -83,7 +83,7 @@ class PeriodicShardSyncManager {
     private final ScheduledExecutorService shardSyncThreadPool;
     private final ILeaseManager<KinesisClientLease> leaseManager;
     private final IKinesisProxy kinesisProxy;
-    private final boolean shouldSkipSyncIfHashRangeIsComplete;
+    private final boolean isAuditorMode;
     private final long periodicShardSyncIntervalMillis;
     private boolean isRunning;
 
@@ -93,9 +93,9 @@ class PeriodicShardSyncManager {
                              IMetricsFactory metricsFactory,
                              ILeaseManager<KinesisClientLease> leaseManager,
                              IKinesisProxy kinesisProxy,
-                             boolean shouldSkipSyncIfHashRangeIsComplete) {
+                             boolean isAuditorMode) {
        this(workerId, leaderDecider, shardSyncTask, Executors.newSingleThreadScheduledExecutor(), metricsFactory,
-               leaseManager, kinesisProxy, shouldSkipSyncIfHashRangeIsComplete);
+               leaseManager, kinesisProxy, isAuditorMode);
     }
 
     PeriodicShardSyncManager(String workerId,
@@ -105,7 +105,7 @@ class PeriodicShardSyncManager {
                              IMetricsFactory metricsFactory,
                              ILeaseManager<KinesisClientLease> leaseManager,
                              IKinesisProxy kinesisProxy,
-                             boolean shouldSkipSyncIfHashRangeIsComplete) {
+                             boolean isAuditorMode) {
         Validate.notBlank(workerId, "WorkerID is required to initialize PeriodicShardSyncManager.");
         Validate.notNull(leaderDecider, "LeaderDecider is required to initialize PeriodicShardSyncManager.");
         Validate.notNull(shardSyncTask, "ShardSyncTask is required to initialize PeriodicShardSyncManager.");
@@ -115,8 +115,8 @@ class PeriodicShardSyncManager {
         this.shardSyncThreadPool = shardSyncThreadPool;
         this.leaseManager = leaseManager;
         this.kinesisProxy = kinesisProxy;
-        this.shouldSkipSyncIfHashRangeIsComplete = shouldSkipSyncIfHashRangeIsComplete;
-        if (shouldSkipSyncIfHashRangeIsComplete) {
+        this.isAuditorMode = isAuditorMode;
+        if (isAuditorMode) {
             Validate.notNull(this.leaseManager, "LeaseManager is required for non-PERIODIC shard sync strategies.");
             Validate.notNull(this.kinesisProxy, "KinesisProxy is required for non-PERIODIC shard sync strategies.");
             this.periodicShardSyncIntervalMillis = AUDITOR_PERIODIC_SHARD_SYNC_INTERVAL_MILLIS;
@@ -164,13 +164,13 @@ class PeriodicShardSyncManager {
 
     private void runShardSync() {
         if (leaderDecider.isLeader(workerId)) {
-            LOG.debug(String.format("WorkerId %s is a leader, running the shard sync task", workerId));
+            LOG.debug("WorkerId " + workerId + " is a leader, running the shard sync task");
 
             try {
                 final ShardSyncResponse shardSyncResponse = checkForShardSync();
                 if (shardSyncResponse.shouldDoShardSync()) {
-                    LOG.info(String.format("Periodic shard syncer initiating shard sync due to the reason - %s",
-                            shardSyncResponse.reasonForDecision()));
+                    LOG.info("Periodic shard syncer initiating shard sync due to the reason - " +
+                            shardSyncResponse.reasonForDecision());
                     metricsEmittingShardSyncTask.call();
                 } else {
                     LOG.info("Skipping shard sync due to the reason - " + shardSyncResponse.reasonForDecision());
@@ -179,7 +179,7 @@ class PeriodicShardSyncManager {
                 LOG.error("Caught exception while running periodic shard syncer.", e);
             }
         } else {
-            LOG.debug(String.format("WorkerId %s is not a leader, not running the shard sync task", workerId));
+            LOG.debug("WorkerId " + workerId + " is not a leader, not running the shard sync task");
         }
     }
 
@@ -187,7 +187,7 @@ class PeriodicShardSyncManager {
     ShardSyncResponse checkForShardSync() throws DependencyException, InvalidStateException,
             ProvisionedThroughputException {
 
-        if (!shouldSkipSyncIfHashRangeIsComplete) {
+        if (!isAuditorMode) {
             // If we are running with PERIODIC shard sync strategy, we should sync every time.
             return new ShardSyncResponse(true, "Syncing every time with PERIODIC shard sync strategy.");
         }
