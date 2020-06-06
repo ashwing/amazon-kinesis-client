@@ -176,7 +176,7 @@ public class KinesisClientLeaseSerializer implements ILeaseSerializer<KinesisCli
                     result.put(STARTING_HASH_KEY, new AttributeValueUpdate(DynamoUtils.createAttributeValue(
                             lease.getHashKeyRange().serializedStartingHashKey()), AttributeAction.PUT));
                     result.put(ENDING_HASH_KEY, new AttributeValueUpdate(DynamoUtils.createAttributeValue(
-                            lease.getHashKeyRange().serializedStartingHashKey()), AttributeAction.PUT));
+                            lease.getHashKeyRange().serializedEndingHashKey()), AttributeAction.PUT));
                 }
                 break;
         }
