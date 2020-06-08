@@ -65,14 +65,16 @@ public class HierarchicalShardSyncer {
 
     private final boolean isMultiStreamMode;
 
-    private String streamIdentifier = "";
+    private final String streamIdentifier;
 
     public HierarchicalShardSyncer() {
         isMultiStreamMode = false;
+        streamIdentifier = "SingleStreamMode";
     }
 
-    public HierarchicalShardSyncer(final boolean isMultiStreamMode) {
+    public HierarchicalShardSyncer(final boolean isMultiStreamMode, final String streamIdentifier) {
         this.isMultiStreamMode = isMultiStreamMode;
+        this.streamIdentifier = streamIdentifier;
     }
 
     private static final BiFunction<Lease, MultiStreamArgs, String> shardIdFromLeaseDeducer =
@@ -102,7 +104,6 @@ public class HierarchicalShardSyncer {
             final boolean cleanupLeasesOfCompletedShards, final boolean ignoreUnexpectedChildShards,
             final MetricsScope scope) throws DependencyException, InvalidStateException,
             ProvisionedThroughputException, KinesisClientLibIOException {
-        this.streamIdentifier = shardDetector.streamIdentifier().serialize();
         final List<Shard> latestShards = getShardList(shardDetector);
         checkAndCreateLeaseForNewShards(shardDetector, leaseRefresher, initialPosition, cleanupLeasesOfCompletedShards,
                                         ignoreUnexpectedChildShards, scope, latestShards);
@@ -114,7 +115,6 @@ public class HierarchicalShardSyncer {
             final boolean ignoreUnexpectedChildShards, final MetricsScope scope, List<Shard> latestShards)
             throws DependencyException, InvalidStateException,
             ProvisionedThroughputException, KinesisClientLibIOException {
-        this.streamIdentifier = shardDetector.streamIdentifier().serialize();
         if (!CollectionUtils.isNullOrEmpty(latestShards)) {
             log.debug("{} - Num shards: {}", streamIdentifier, latestShards.size());
         }
