@@ -82,6 +82,7 @@ public class DynamoDBLeaseManagementFactory implements LeaseManagementFactory {
     private final TableCreatorCallback tableCreatorCallback;
     private final Duration dynamoDbRequestTimeout;
     private final BillingMode billingMode;
+    private final boolean isMultiStreamMode;
 
     /**
      * Constructor.
@@ -385,7 +386,7 @@ public class DynamoDBLeaseManagementFactory implements LeaseManagementFactory {
                 maxListShardsRetryAttempts, maxCacheMissesBeforeReload, listShardsCacheAllowedAgeInSeconds,
                 cacheMissWarningModulus, initialLeaseTableReadCapacity, initialLeaseTableWriteCapacity,
                 hierarchicalShardSyncer, tableCreatorCallback, dynamoDbRequestTimeout, billingMode, leaseSerializer,
-                null);
+                null, false);
         this.streamConfig = streamConfig;
     }
 
@@ -417,6 +418,8 @@ public class DynamoDBLeaseManagementFactory implements LeaseManagementFactory {
      * @param dynamoDbRequestTimeout
      * @param billingMode
      * @param leaseSerializer
+     * @param customShardDetectorProvider
+     * @param isMultiStreamMode
      */
     public DynamoDBLeaseManagementFactory(final KinesisAsyncClient kinesisClient,
             final DynamoDbAsyncClient dynamoDBClient, final String tableName, final String workerIdentifier,
@@ -429,7 +432,7 @@ public class DynamoDBLeaseManagementFactory implements LeaseManagementFactory {
             final long initialLeaseTableReadCapacity, final long initialLeaseTableWriteCapacity,
             final HierarchicalShardSyncer hierarchicalShardSyncer, final TableCreatorCallback tableCreatorCallback,
             Duration dynamoDbRequestTimeout, BillingMode billingMode, LeaseSerializer leaseSerializer,
-            Function<StreamConfig, ShardDetector> customShardDetectorProvider) {
+            Function<StreamConfig, ShardDetector> customShardDetectorProvider, boolean isMultiStreamMode) {
         this.kinesisClient = kinesisClient;
         this.dynamoDBClient = dynamoDBClient;
         this.tableName = tableName;
@@ -457,6 +460,7 @@ public class DynamoDBLeaseManagementFactory implements LeaseManagementFactory {
         this.billingMode = billingMode;
         this.leaseSerializer = leaseSerializer;
         this.customShardDetectorProvider = customShardDetectorProvider;
+        this.isMultiStreamMode = isMultiStreamMode;
     }
 
     @Override
@@ -501,7 +505,7 @@ public class DynamoDBLeaseManagementFactory implements LeaseManagementFactory {
                 ignoreUnexpectedChildShards,
                 shardSyncIntervalMillis,
                 executorService,
-                hierarchicalShardSyncer,
+                new HierarchicalShardSyncer(isMultiStreamMode, streamConfig.streamIdentifier().toString()),
                 metricsFactory);
     }
 

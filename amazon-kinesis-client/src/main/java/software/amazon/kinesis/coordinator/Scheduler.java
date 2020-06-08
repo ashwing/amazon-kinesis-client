@@ -155,7 +155,7 @@ public class Scheduler implements Runnable {
     private final Function<StreamConfig, ShardDetector> shardDetectorProvider;
     private final boolean ignoreUnexpetedChildShards;
     private final AggregatorUtil aggregatorUtil;
-    private final HierarchicalShardSyncer hierarchicalShardSyncer;
+    private final Function<StreamConfig, HierarchicalShardSyncer> hierarchicalShardSyncerProvider;
     private final long schedulerInitializationBackoffTimeMillis;
     private final Map<StreamIdentifier, Instant> staleStreamDeletionMap = new HashMap<>();
 
@@ -276,8 +276,7 @@ public class Scheduler implements Runnable {
         this.shardDetectorProvider = streamConfig -> createOrGetShardSyncTaskManager(streamConfig).shardDetector();
         this.ignoreUnexpetedChildShards = this.leaseManagementConfig.ignoreUnexpectedChildShards();
         this.aggregatorUtil = this.lifecycleConfig.aggregatorUtil();
-        // TODO : LTR : Check if this needs to be per stream.
-        this.hierarchicalShardSyncer = leaseManagementConfig.hierarchicalShardSyncer(isMultiStreamMode);
+        this.hierarchicalShardSyncerProvider = streamConfig -> createOrGetShardSyncTaskManager(streamConfig).hierarchicalShardSyncer();
         this.schedulerInitializationBackoffTimeMillis = this.coordinatorConfig.schedulerInitializationBackoffTimeMillis();
     }
 
@@ -332,7 +331,7 @@ public class Scheduler implements Runnable {
                             ShardSyncTask shardSyncTask = new ShardSyncTask(shardDetectorProvider.apply(streamConfig),
                                     leaseRefresher, streamConfig.initialPositionInStreamExtended(),
                                     cleanupLeasesUponShardCompletion, ignoreUnexpetedChildShards, 0L,
-                                    hierarchicalShardSyncer, metricsFactory);
+                                    hierarchicalShardSyncerProvider.apply(streamConfig), metricsFactory);
                             result = new MetricsCollectingTaskDecorator(shardSyncTask, metricsFactory).call();
                             // Throwing the exception, to prevent further syncs for other stream.
                             if (result.getException() != null) {
@@ -905,7 +904,7 @@ public class Scheduler implements Runnable {
                 ignoreUnexpetedChildShards,
                 shardDetectorProvider.apply(streamConfig),
                 aggregatorUtil,
-                hierarchicalShardSyncer,
+                hierarchicalShardSyncerProvider.apply(streamConfig),
                 metricsFactory);
         return new ShardConsumer(cache, executorService, shardInfo, lifecycleConfig.logWarningForTaskAfterMillis(),
                 argument, lifecycleConfig.taskExecutionListener(), lifecycleConfig.readTimeoutsToIgnoreBeforeWarning());
