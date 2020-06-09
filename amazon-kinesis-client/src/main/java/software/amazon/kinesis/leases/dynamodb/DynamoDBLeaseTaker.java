@@ -48,7 +48,7 @@ import software.amazon.kinesis.metrics.MetricsUtil;
 public class DynamoDBLeaseTaker implements LeaseTaker {
     private static final int TAKE_RETRIES = 3;
     private static final int SCAN_RETRIES = 1;
-    private static final int EXPIRED_LEASE_THRESHOLD = 3;
+    private static final int VERY_OLD_LEASE_DURATION_NANOS_MULTIPLIER = 3;
     // See note on TAKE_LEASES_DIMENSION(Callable) for why we have this callable.
     private static final Callable<Long> SYSTEM_CLOCK_CALLABLE = System::nanoTime;
 
@@ -345,7 +345,7 @@ public class DynamoDBLeaseTaker implements LeaseTaker {
             // later) but obeying the maximum limit per worker.
             List<Lease> veryOldLeases = allLeases.values().stream()
                     .filter(lease -> System.nanoTime() - lease.lastCounterIncrementNanos()
-                            > EXPIRED_LEASE_THRESHOLD * leaseDurationNanos)
+                            > VERY_OLD_LEASE_DURATION_NANOS_MULTIPLIER * leaseDurationNanos)
                     .collect(Collectors.toList());
 
             if (!veryOldLeases.isEmpty()) {
@@ -355,6 +355,7 @@ public class DynamoDBLeaseTaker implements LeaseTaker {
                 if (n > 0) {
                     log.info("Taking leases that have been expired for a long time: {}", result);
                 }
+                scope.addData("VeryOldLeases", n, StandardUnit.COUNT, MetricsLevel.SUMMARY);
                 return result;
             }
 
