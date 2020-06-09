@@ -25,7 +25,7 @@ import java.util.Map.Entry;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
-
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.services.cloudwatch.model.StandardUnit;
 import software.amazon.kinesis.annotations.KinesisClientInternalApi;
@@ -36,8 +36,8 @@ import software.amazon.kinesis.leases.exceptions.DependencyException;
 import software.amazon.kinesis.leases.exceptions.InvalidStateException;
 import software.amazon.kinesis.leases.exceptions.ProvisionedThroughputException;
 import software.amazon.kinesis.metrics.MetricsFactory;
-import software.amazon.kinesis.metrics.MetricsScope;
 import software.amazon.kinesis.metrics.MetricsLevel;
+import software.amazon.kinesis.metrics.MetricsScope;
 import software.amazon.kinesis.metrics.MetricsUtil;
 
 /**
@@ -48,7 +48,7 @@ import software.amazon.kinesis.metrics.MetricsUtil;
 public class DynamoDBLeaseTaker implements LeaseTaker {
     private static final int TAKE_RETRIES = 3;
     private static final int SCAN_RETRIES = 1;
-
+    private static final int VERY_OLD_LEASE_DURATION_NANOS_MULTIPLIER = 3;
     // See note on TAKE_LEASES_DIMENSION(Callable) for why we have this callable.
     private static final Callable<Long> SYSTEM_CLOCK_CALLABLE = System::nanoTime;
 
@@ -339,16 +339,36 @@ public class DynamoDBLeaseTaker implements LeaseTaker {
                 return leasesToTake;
             }
 
+            int currentLeaseCount = leaseCounts.get(workerIdentifier);
+            // If there are leases that have been expired for an extended period of
+            // time, take them with priority, disregarding the target (computed
+            // later) but obeying the maximum limit per worker.
+            List<Lease> veryOldLeases = allLeases.values().stream()
+                    .filter(lease -> System.nanoTime() - lease.lastCounterIncrementNanos()
+                            > VERY_OLD_LEASE_DURATION_NANOS_MULTIPLIER * leaseDurationNanos)
+                    .collect(Collectors.toList());
+
+            if (!veryOldLeases.isEmpty()) {
+                Collections.shuffle(veryOldLeases);
+                int n = Math.max(0, Math.min(maxLeasesForWorker - currentLeaseCount, veryOldLeases.size()));
+                HashSet<Lease> result = new HashSet<>(veryOldLeases.subList(0, n));
+                if (n > 0) {
+                    log.info("Taking leases that have been expired for a long time: {}", result);
+                }
+                scope.addData("VeryOldLeases", n, StandardUnit.COUNT, MetricsLevel.SUMMARY);
+                return result;
+            }
+
             int target;
             if (numWorkers >= numLeases) {
                 // If we have n leases and n or more workers, each worker can have up to 1 lease, including myself.
                 target = 1;
             } else {
-            /*
-             * numWorkers must be < numLeases.
-             * 
-             * Our target for each worker is numLeases / numWorkers (+1 if numWorkers doesn't evenly divide numLeases)
-             */
+                /*
+                 * numWorkers must be < numLeases.
+                 *
+                 * Our target for each worker is numLeases / numWorkers (+1 if numWorkers doesn't evenly divide numLeases)
+                 */
                 target = numLeases / numWorkers + (numLeases % numWorkers == 0 ? 0 : 1);
 
                 // Spill over is the number of leases this worker should have claimed, but did not because it would
