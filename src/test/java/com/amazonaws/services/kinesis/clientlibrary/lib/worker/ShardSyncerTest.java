@@ -18,6 +18,9 @@ import java.io.File;
 import java.io.IOException;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -29,8 +32,10 @@ import java.util.stream.Stream;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.local.embedded.DynamoDBEmbedded;
+import com.amazonaws.services.kinesis.leases.impl.Lease;
 import com.amazonaws.services.kinesis.model.ShardFilter;
 import com.amazonaws.services.kinesis.model.ShardFilterType;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.junit.After;
@@ -41,6 +46,7 @@ import org.junit.Test;
 
 import com.amazonaws.services.kinesis.clientlibrary.exceptions.internal.KinesisClientLibIOException;
 import com.amazonaws.services.kinesis.clientlibrary.lib.worker.ExceptionThrowingLeaseManager.ExceptionThrowingLeaseManagerMethods;
+import com.amazonaws.services.kinesis.clientlibrary.lib.worker.KinesisShardSyncer.MemoizationContext;
 import com.amazonaws.services.kinesis.clientlibrary.proxies.IKinesisProxy;
 import com.amazonaws.services.kinesis.clientlibrary.proxies.KinesisLocalFileProxy;
 import com.amazonaws.services.kinesis.clientlibrary.proxies.util.KinesisLocalFileDataCreator;
@@ -58,10 +64,14 @@ import com.amazonaws.services.kinesis.model.Shard;
 
 import junit.framework.Assert;
 
+import static org.hamcrest.Matchers.equalTo;
+import static org.junit.Assert.assertThat;
+import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  *
@@ -75,6 +85,7 @@ public class ShardSyncerTest {
             InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON);
     private static final InitialPositionInStreamExtended INITIAL_POSITION_AT_TIMESTAMP =
             InitialPositionInStreamExtended.newInitialPositionAtTimestamp(new Date(1000L));
+    private static String LEASE_OWNER = "leaseOwner";
     private final boolean cleanupLeasesOfCompletedShards = true;
     private static final int EXPONENT = 128;
     AmazonDynamoDB ddbClient = DynamoDBEmbedded.create().amazonDynamoDB();
@@ -236,7 +247,7 @@ public class ShardSyncerTest {
      * All open and closed shards within stream's retention period should be sync'ed when lease table is empty.
      */
     @Test
-    public final void testCheckAndCreateLeasesForNewShardsAtLatestWithEmptyLeaseTable()
+    public final void testCheckAndCreateLeasesForNewShardsAtLatestWithEmptyLeaseTable1()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
         List<Shard> shards = constructShardListForGraphA();
@@ -263,7 +274,7 @@ public class ShardSyncerTest {
      * We should only create leases for shards at LATEST when lease table is not empty.
      */
     @Test
-    public final void testCheckAndCreateLeasesForNewShardsAtLatestWithPartialLeaseTable()
+    public final void testCheckAndCreateLeasesForNewShardsAtLatestWithPartialLeaseTable1()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
         List<Shard> shards = constructShardListForGraphA();
@@ -431,8 +442,11 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTrimHorizonAndClosedShard()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException,
             ProvisionedThroughputException, IOException {
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-0", "shardId-1", "shardId-2", "shardId-3", "shardId-4", "shardId-5"
+        ));
         testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(null,
-                Integer.MAX_VALUE, INITIAL_POSITION_TRIM_HORIZON);
+                Integer.MAX_VALUE, INITIAL_POSITION_TRIM_HORIZON, expectedLeaseKeysToCreate);
     }
 
     /**
@@ -446,12 +460,16 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTrimHorizonAndClosedShardWithDeleteLeaseExceptions()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
+
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-0", "shardId-1", "shardId-2", "shardId-3", "shardId-4", "shardId-5"
+        ));
         // Define the max calling count for lease manager methods.
         // From the Shard Graph, the max count of calling could be 10
         int maxCallingCount = 10;
         for (int c = 1; c <= maxCallingCount; c = c + 2) {
             testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(
-                    ExceptionThrowingLeaseManagerMethods.DELETELEASE, c, INITIAL_POSITION_TRIM_HORIZON);
+                    ExceptionThrowingLeaseManagerMethods.DELETELEASE, c, INITIAL_POSITION_TRIM_HORIZON, expectedLeaseKeysToCreate);
             // Need to clean up lease manager every time after calling KinesisShardSyncer
             leaseManager.deleteAll();
         }
@@ -468,12 +486,15 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTrimHorizonAndClosedShardWithListLeasesExceptions()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-0", "shardId-1", "shardId-2", "shardId-3", "shardId-4", "shardId-5"
+        ));
         // Define the max calling count for lease manager methods.
         // From the Shard Graph, the max count of calling could be 10
         int maxCallingCount = 10;
         for (int c = 1; c <= maxCallingCount; c = c + 2) {
             testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(
-                    ExceptionThrowingLeaseManagerMethods.LISTLEASES, c, INITIAL_POSITION_TRIM_HORIZON);
+                    ExceptionThrowingLeaseManagerMethods.LISTLEASES, c, INITIAL_POSITION_TRIM_HORIZON, expectedLeaseKeysToCreate);
             // Need to clean up lease manager every time after calling KinesisShardSyncer
             leaseManager.deleteAll();
         }
@@ -490,12 +511,15 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTrimHorizonAndClosedShardWithCreateLeaseExceptions()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-0", "shardId-1", "shardId-2", "shardId-3", "shardId-4", "shardId-5"
+        ));
         // Define the max calling count for lease manager methods.
         // From the Shard Graph, the max count of calling could be 10
-        int maxCallingCount = 5;
+        int maxCallingCount = 1;
         for (int c = 1; c <= maxCallingCount; c = c + 2) {
             testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(
-                    ExceptionThrowingLeaseManagerMethods.CREATELEASEIFNOTEXISTS, c,INITIAL_POSITION_TRIM_HORIZON);
+                    ExceptionThrowingLeaseManagerMethods.CREATELEASEIFNOTEXISTS, c, INITIAL_POSITION_TRIM_HORIZON, expectedLeaseKeysToCreate);
             // Need to clean up lease manager every time after calling KinesisShardSyncer
             leaseManager.deleteAll();
         }
@@ -549,8 +573,11 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTimestampAndClosedShard()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException,
             ProvisionedThroughputException, IOException {
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-8", "shardId-4", "shardId-9", "shardId-10"
+        ));
         testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(null,
-                Integer.MAX_VALUE, INITIAL_POSITION_AT_TIMESTAMP);
+                Integer.MAX_VALUE, INITIAL_POSITION_AT_TIMESTAMP, expectedLeaseKeysToCreate);
     }
 
     /**
@@ -564,13 +591,16 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTimestampAndClosedShardWithDeleteLeaseExceptions()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-8", "shardId-4", "shardId-9", "shardId-10"
+        ));
         // Define the max calling count for lease manager methods.
         // From the Shard Graph, the max count of calling could be 10
         int maxCallingCount = 10;
         for (int c = 1; c <= maxCallingCount; c = c + 2) {
             testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(
                     ExceptionThrowingLeaseManagerMethods.DELETELEASE,
-                    c, INITIAL_POSITION_AT_TIMESTAMP);
+                    c, INITIAL_POSITION_AT_TIMESTAMP, expectedLeaseKeysToCreate);
             // Need to clean up lease manager every time after calling KinesisShardSyncer
             leaseManager.deleteAll();
         }
@@ -587,13 +617,16 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTimestampAndClosedShardWithListLeasesExceptions()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-8", "shardId-4", "shardId-9", "shardId-10"
+        ));
         // Define the max calling count for lease manager methods.
         // From the Shard Graph, the max count of calling could be 10
         int maxCallingCount = 10;
         for (int c = 1; c <= maxCallingCount; c = c + 2) {
             testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(
                     ExceptionThrowingLeaseManagerMethods.LISTLEASES,
-                    c, INITIAL_POSITION_AT_TIMESTAMP);
+                    c, INITIAL_POSITION_AT_TIMESTAMP, expectedLeaseKeysToCreate);
             // Need to clean up lease manager every time after calling KinesisShardSyncer
             leaseManager.deleteAll();
         }
@@ -610,13 +643,16 @@ public class ShardSyncerTest {
     public final void testCheckAndCreateLeasesForNewShardsAtTimestampAndClosedShardWithCreateLeaseExceptions()
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList(
+                "shardId-8", "shardId-4", "shardId-9", "shardId-10"
+        ));
         // Define the max calling count for lease manager methods.
         // From the Shard Graph, the max count of calling could be 10
         int maxCallingCount = 5;
         for (int c = 1; c <= maxCallingCount; c = c + 2) {
             testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(
                     ExceptionThrowingLeaseManagerMethods.CREATELEASEIFNOTEXISTS,
-                    c, INITIAL_POSITION_AT_TIMESTAMP);
+                    c, INITIAL_POSITION_AT_TIMESTAMP, expectedLeaseKeysToCreate);
             // Need to clean up lease manager every time after calling KinesisShardSyncer
             leaseManager.deleteAll();
         }
@@ -626,7 +662,7 @@ public class ShardSyncerTest {
     private void testCheckAndCreateLeasesForNewShardsAtSpecifiedPositionAndClosedShardImpl(
             ExceptionThrowingLeaseManagerMethods exceptionMethod,
             int exceptionTime,
-            InitialPositionInStreamExtended position)
+            InitialPositionInStreamExtended position, Set<String> expectedLeaseKeysToCreate)
             throws KinesisClientLibIOException, DependencyException, InvalidStateException, ProvisionedThroughputException,
             IOException {
         ExtendedSequenceNumber extendedSequenceNumber =
@@ -634,35 +670,17 @@ public class ShardSyncerTest {
         List<Shard> shards = constructShardListForGraphA();
         File dataFile = KinesisLocalFileDataCreator.generateTempDataFile(shards, 2, "testBootstrap1");
         dataFile.deleteOnExit();
-        IKinesisProxy kinesisProxy = new KinesisLocalFileProxy(dataFile.getAbsolutePath());
+        final IKinesisProxy kinesisProxy = spy(new KinesisLocalFileProxy(dataFile.getAbsolutePath()));
+        when(kinesisProxy.getShardList()).thenReturn(shards);
+        when(kinesisProxy.getShardListWithFilter(any())).thenReturn(getFilteredShards(shards, position));
 
         retryCheckAndCreateLeaseForNewShards(kinesisProxy, exceptionMethod, exceptionTime, position);
 
         List<KinesisClientLease> newLeases = leaseManager.listLeases();
         Map<String, ExtendedSequenceNumber> expectedShardIdToCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
-        for (int i = 0; i < 11; i++) {
-            expectedShardIdToCheckpointMap.put("shardId-" + i, extendedSequenceNumber);
-        }
-        Assert.assertEquals(expectedShardIdToCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease1 : newLeases) {
-            ExtendedSequenceNumber expectedCheckpoint = expectedShardIdToCheckpointMap.get(lease1.getLeaseKey());
-            Assert.assertNotNull(expectedCheckpoint);
-            Assert.assertEquals(expectedCheckpoint, lease1.getCheckpoint());
-        }
+        expectedLeaseKeysToCreate.forEach(l -> expectedShardIdToCheckpointMap.put(l, extendedSequenceNumber));
 
-        KinesisClientLease closedShardLease = leaseManager.getLease("shardId-0");
-        closedShardLease.setCheckpoint(ExtendedSequenceNumber.SHARD_END);
-        leaseManager.updateLease(closedShardLease);
-        expectedShardIdToCheckpointMap.remove(closedShardLease.getLeaseKey());
-        KinesisClientLease childShardLease = leaseManager.getLease("shardId-6");
-        childShardLease.setCheckpoint(new ExtendedSequenceNumber("34290"));
-        leaseManager.updateLease(childShardLease);
-        expectedShardIdToCheckpointMap.put(childShardLease.getLeaseKey(), new ExtendedSequenceNumber("34290"));
-
-        retryCheckAndCreateLeaseForNewShards(kinesisProxy, exceptionMethod, exceptionTime, position);
-
-        newLeases = leaseManager.listLeases();
         Assert.assertEquals(expectedShardIdToCheckpointMap.size(), newLeases.size());
         for (KinesisClientLease lease1 : newLeases) {
             ExtendedSequenceNumber expectedCheckpoint = expectedShardIdToCheckpointMap.get(lease1.getLeaseKey());
@@ -835,12 +853,14 @@ public class ShardSyncerTest {
     /**
      * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position Latest)
      * Shard structure (each level depicts a stream segment):
-     * 0 1 2 3 4 5- shards till epoch 102
-     * \ / \ / | |
-     * 6 7 4 5- shards from epoch 103 - 205
-     * \ / | /\
-     * 8 4 9 10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (3, 4, 5)
+     * Initial position: LATEST
+     * Leases to create: (2, 6)
      */
     @Test
     public final void testDetermineNewLeasesToCreateSplitMergeLatest1() {
@@ -857,12 +877,8 @@ public class ShardSyncerTest {
                 shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_LATEST);
         Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.TRIM_HORIZON);
         expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.LATEST);
         expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.LATEST);
-        expectedShardIdCheckpointMap.put("shardId-7", ExtendedSequenceNumber.TRIM_HORIZON);
 
         Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
         for (KinesisClientLease lease : newLeases) {
@@ -875,12 +891,14 @@ public class ShardSyncerTest {
     /**
      * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position Latest)
      * Shard structure (each level depicts a stream segment):
-     * 0 1 2 3 4 5- shards till epoch 102
-     * \ / \ / | |
-     * 6 7 4 5- shards from epoch 103 - 205
-     * \ / | /\
-     * 8 4 9 10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (4, 5, 7)
+     * Initial position: LATEST
+     * Leases to create: (6)
      */
     @Test
     public final void testDetermineNewLeasesToCreateSplitMergeLatest2() {
@@ -897,9 +915,6 @@ public class ShardSyncerTest {
                 shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_LATEST);
         Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.TRIM_HORIZON);
         expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.LATEST);
 
         Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
@@ -913,12 +928,14 @@ public class ShardSyncerTest {
     /**
      * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position TrimHorizon)
      * Shard structure (each level depicts a stream segment):
-     * 0 1 2 3 4 5- shards till epoch 102
-     * \ / \ / | |
-     * 6 7 4 5- shards from epoch 103 - 205
-     * \ / | /\
-     * 8 4 9 10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (3, 4, 5)
+     * Initial position: TRIM_HORIZON
+     * Leases to create: (0, 1, 2)
      */
     @Test
     public final void testDetermineNewLeasesToCreateSplitMergeHorizon1() {
@@ -935,12 +952,7 @@ public class ShardSyncerTest {
                 shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_TRIM_HORIZON);
         Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.TRIM_HORIZON);
         expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-7", ExtendedSequenceNumber.TRIM_HORIZON);
         expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
         expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
 
@@ -955,12 +967,14 @@ public class ShardSyncerTest {
     /**
      * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position TrimHorizon)
      * Shard structure (each level depicts a stream segment):
-     * 0 1 2 3 4 5- shards till epoch 102
-     * \ / \ / | |
-     * 6 7 4 5- shards from epoch 103 - 205
-     * \ / | /\
-     * 8 4 9 10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (4, 5, 7)
+     * Initial position: TRIM_HORIZON
+     * Leases to create: (6)
      */
     @Test
     public final void testDetermineNewLeasesToCreateSplitMergeHorizon2() {
@@ -977,10 +991,6 @@ public class ShardSyncerTest {
                 shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_TRIM_HORIZON);
         Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.TRIM_HORIZON);
         expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
         expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
 
@@ -1029,6 +1039,8 @@ public class ShardSyncerTest {
      *   \ /   |  /\
      *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (3, 4, 5)
+     * Initial position: AT_TIMESTAMP
+     * Leases to create: (0, 1, 2)
      */
     @Test
     public final void testDetermineNewLeasesToCreateSplitMergeAtTimestamp1() {
@@ -1044,12 +1056,7 @@ public class ShardSyncerTest {
         List<KinesisClientLease> newLeases =
                 shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_AT_TIMESTAMP);
         Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.AT_TIMESTAMP);
         expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-7", ExtendedSequenceNumber.AT_TIMESTAMP);
         expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
         expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
 
@@ -1070,6 +1077,8 @@ public class ShardSyncerTest {
      *   \ /   |  /\
      *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (4, 5, 7)
+     * Initial position: AT_TIMESTAMP
+     * Leases to create: (0, 1)
      */
     @Test
     public final void testDetermineNewLeasesToCreateSplitMergeAtTimestamp2() {
@@ -1085,10 +1094,6 @@ public class ShardSyncerTest {
         List<KinesisClientLease> newLeases =
                 shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_AT_TIMESTAMP);
         Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.AT_TIMESTAMP);
         expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
         expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
 
@@ -1219,7 +1224,7 @@ public class ShardSyncerTest {
      */
     @Test
     public final void testCheckIfDescendantAndAddNewLeasesForAncestorsNullShardId() {
-        Map<String, Boolean> memoizationContext = new HashMap<>();
+        final MemoizationContext memoizationContext = new MemoizationContext();
         Assert.assertFalse(shardSyncer.checkIfDescendantAndAddNewLeasesForAncestors(null, INITIAL_POSITION_LATEST,
                 null,
                 null,
@@ -1234,7 +1239,7 @@ public class ShardSyncerTest {
     public final void testCheckIfDescendantAndAddNewLeasesForAncestorsTrimmedShard() {
         String shardId = "shardId-trimmed";
         Map<String, Shard> kinesisShards = new HashMap<String, Shard>();
-        Map<String, Boolean> memoizationContext = new HashMap<>();
+        final MemoizationContext memoizationContext = new MemoizationContext();
         Assert.assertFalse(shardSyncer.checkIfDescendantAndAddNewLeasesForAncestors(shardId, INITIAL_POSITION_LATEST,
                 null,
                 kinesisShards,
@@ -1253,7 +1258,7 @@ public class ShardSyncerTest {
         Set<String> shardIdsOfCurrentLeases = new HashSet<String>();
         shardIdsOfCurrentLeases.add(shardId);
         Map<String, KinesisClientLease> newLeaseMap = new HashMap<String, KinesisClientLease>();
-        Map<String, Boolean> memoizationContext = new HashMap<>();
+        final MemoizationContext memoizationContext = new MemoizationContext();
         Assert.assertTrue(shardSyncer.checkIfDescendantAndAddNewLeasesForAncestors(shardId, INITIAL_POSITION_LATEST,
                 shardIdsOfCurrentLeases,
                 kinesisShards,
@@ -1280,7 +1285,7 @@ public class ShardSyncerTest {
         String shardId = "shardId-9-1";
         kinesisShards.put(shardId, ShardObjectHelper.newShard(shardId, parentShardId, adjacentParentShardId, null));
 
-        Map<String, Boolean> memoizationContext = new HashMap<>();
+        final MemoizationContext memoizationContext = new MemoizationContext();
         Assert.assertFalse(shardSyncer.checkIfDescendantAndAddNewLeasesForAncestors(shardId, INITIAL_POSITION_LATEST,
                 shardIdsOfCurrentLeases,
                 kinesisShards,
@@ -1309,7 +1314,7 @@ public class ShardSyncerTest {
         Shard shard = ShardObjectHelper.newShard(shardId, parentShardId, adjacentParentShardId, null);
         kinesisShards.put(shardId, shard);
 
-        Map<String, Boolean> memoizationContext = new HashMap<>();
+        final MemoizationContext memoizationContext = new MemoizationContext();
         Assert.assertTrue(shardSyncer.checkIfDescendantAndAddNewLeasesForAncestors(shardId, INITIAL_POSITION_LATEST,
                 shardIdsOfCurrentLeases,
                 kinesisShards,
@@ -1857,6 +1862,216 @@ public class ShardSyncerTest {
         shardSyncer.assertClosedShardsAreCoveredOrAbsent(shardIdToShardMap, shardIdToChildShardIdsMap, closedShardIds);
     }
 
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Initial position: TRIM_HORIZON
+     * Leases to create: (0, 1, 2, 3, 4, 5)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtTrimHorizonWithEmptyLeaseTable() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList("shardId-0", "shardId-1", "shardId-2",
+                "shardId-3", "shardId-4", "shardId-5"));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, INITIAL_POSITION_TRIM_HORIZON, expectedLeaseKeysToCreate);
+    }
+
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Leases to create: (8, 4, 9, 10)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtTimestampWithEmptyLeaseTable1() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList("shardId-8", "shardId-4", "shardId-9",
+                "shardId-10"));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, INITIAL_POSITION_AT_TIMESTAMP, expectedLeaseKeysToCreate);
+    }
+
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Initial position: AT_TIMESTAMP(200)
+     * Leases to create: (6, 7, 4, 5)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtTimestampWithEmptyLeaseTable2() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList("shardId-6", "shardId-7", "shardId-4",
+                "shardId-5"));
+        final InitialPositionInStreamExtended initialPosition = InitialPositionInStreamExtended
+                .newInitialPositionAtTimestamp(new Date(200L));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, initialPosition, expectedLeaseKeysToCreate);
+    }
+
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Initial position: LATEST
+     * Leases to create: (8, 4, 9, 10)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtLatestWithEmptyLeaseTable2() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList("shardId-8", "shardId-4", "shardId-9",
+                "shardId-10"));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, INITIAL_POSITION_LATEST, expectedLeaseKeysToCreate);
+    }
+
+    private void testCheckAndCreateLeaseForShardsIfMissing(List<Shard> shards,InitialPositionInStreamExtended initialPositionInStreamExtended,
+                                                           Set<String> expectedLeaseKeys) throws Exception {
+        testCheckAndCreateLeaseForShardsIfMissing(shards, initialPositionInStreamExtended, expectedLeaseKeys, Collections.emptyList());
+    }
+
+    private void testCheckAndCreateLeaseForShardsIfMissing(List<Shard> shards,InitialPositionInStreamExtended initialPositionInStreamExtended,
+                                                           Set<String> expectedLeaseKeys, List<KinesisClientLease> existingLeases) throws Exception {
+        final File dataFile = KinesisLocalFileDataCreator.generateTempDataFile(shards, 0, "fileName");
+        dataFile.deleteOnExit();
+        final IKinesisProxy kinesisProxy = spy(new KinesisLocalFileProxy(dataFile.getAbsolutePath()));
+        when(kinesisProxy.getShardList()).thenReturn(shards);
+        when(kinesisProxy.getShardListWithFilter(any())).thenReturn(getFilteredShards(shards, initialPositionInStreamExtended));
+
+        // Populate existing leases
+        for (KinesisClientLease lease : existingLeases) {
+            leaseManager.createLeaseIfNotExists(lease);
+        }
+
+        List<KinesisClientLease> oldLeases = leaseManager.listLeases();
+        shardSyncer.checkAndCreateLeasesForNewShards(kinesisProxy, leaseManager, initialPositionInStreamExtended,
+                false, false);
+        List<KinesisClientLease> newLeases = leaseManager.listLeases();
+        newLeases.removeAll(oldLeases);
+
+        final Set<String> newLeaseKeys = newLeases.stream().map(Lease::getLeaseKey).collect(Collectors.toSet());
+        final Set<ExtendedSequenceNumber> newSequenceNumbers = newLeases.stream().map(KinesisClientLease::getCheckpoint).collect(Collectors.toSet());
+        final Set<ExtendedSequenceNumber> expectedSequenceNumbers = new HashSet<>(Collections
+                .singletonList(new ExtendedSequenceNumber(initialPositionInStreamExtended.getInitialPositionInStream().name())));
+
+        assertThat(newLeases.size(), equalTo(expectedLeaseKeys.size()));
+        assertThat(newLeaseKeys, equalTo(expectedLeaseKeys));
+        assertThat(newSequenceNumbers, equalTo(expectedSequenceNumbers));
+
+        dataFile.delete();
+    }
+
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Missing leases: (0, 6, 8)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Leases to create: (0)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtTimestampWithPartialLeaseTable1() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        // Leases for shard-0 and its descendants (shard-6, and shard-8) are missing. Expect lease sync to recover the
+        // lease for shard-0 when reading from AT_TIMESTAMP.
+        final Set<String> missingLeaseKeys = new HashSet<>(Arrays.asList("shardId-0", "shardId-6", "shardId-8"));
+        final List<Shard> shardsWithLeases = shards.stream()
+                .filter(s -> !missingLeaseKeys.contains(s.getShardId())).collect(Collectors.toList());
+        final List<KinesisClientLease> existingLeases = createLeasesFromShards(shardsWithLeases, ExtendedSequenceNumber.AT_TIMESTAMP, LEASE_OWNER);
+
+        final Set<String> expectedLeaseKeys= new HashSet<>(Arrays.asList("shardId-0"));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, INITIAL_POSITION_AT_TIMESTAMP, expectedLeaseKeys, existingLeases);
+    }
+
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Missing leases: (0, 6, 8)
+     * Initial position: AT_TIMESTAMP(200)
+     * Leases to create: (0)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtTimestampWithPartialLeaseTable2() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        final InitialPositionInStreamExtended initialPosition = InitialPositionInStreamExtended
+                .newInitialPositionAtTimestamp(new Date(200L));
+        // Leases for shard-0 and its descendants (shard-6, and shard-8) are missing. Expect lease sync to recover the
+        // lease for shard-0 when reading from AT_TIMESTAMP.
+        final Set<String> missingLeaseKeys = new HashSet<>(Arrays.asList("shardId-0", "shardId-6", "shardId-8"));
+        final List<Shard> shardsWithLeases = shards.stream()
+                .filter(s -> !missingLeaseKeys.contains(s.getShardId())).collect(Collectors.toList());
+        final List<KinesisClientLease> existingLeases = createLeasesFromShards(shardsWithLeases, ExtendedSequenceNumber.AT_TIMESTAMP, LEASE_OWNER);
+
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList("shardId-0"));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, initialPosition, expectedLeaseKeysToCreate, existingLeases);
+    }
+
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Missing leases: (0, 6, 8)
+     * Initial position: LATEST
+     * Leases to create: (0)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtLatestWithPartialLeaseTable2() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        // Leases for shard-0 and its descendants (shard-6, and shard-8) are missing. Expect lease sync to recover the
+        // lease for shard-0 when reading from LATEST.
+        final Set<String> missingLeaseKeys = new HashSet<>(Arrays.asList("shardId-0", "shardId-6", "shardId-8"));
+        final List<Shard> shardsWithLeases = shards.stream()
+                .filter(s -> !missingLeaseKeys.contains(s.getShardId())).collect(Collectors.toList());
+        final List<KinesisClientLease> existingLeases = createLeasesFromShards(shardsWithLeases, ExtendedSequenceNumber.LATEST, LEASE_OWNER);
+
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList("shardId-0"));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, INITIAL_POSITION_LATEST, expectedLeaseKeysToCreate, existingLeases);
+    }
+
+    private List<KinesisClientLease> createLeasesFromShards(final List<Shard> shards, final ExtendedSequenceNumber checkpoint,
+                                               final String leaseOwner) {
+        return shards.stream().map(shard -> {
+            final Set<String> parentShardIds = new HashSet<>();
+            if (StringUtils.isNotEmpty(shard.getParentShardId())) {
+                parentShardIds.add(shard.getParentShardId());
+            }
+            if (StringUtils.isNotEmpty(shard.getAdjacentParentShardId())) {
+                parentShardIds.add(shard.getAdjacentParentShardId());
+            }
+
+            final KinesisClientLease lease = new KinesisClientLease();
+            lease.setLeaseKey(shard.getShardId());
+            lease.setLeaseOwner(leaseOwner);
+            lease.setLeaseCounter(0L);
+            lease.setLastCounterIncrementNanos(0L);
+            lease.setCheckpoint(checkpoint);
+            lease.setOwnerSwitchesSinceCheckpoint(0L);
+            lease.setParentShardIds(parentShardIds);
+
+            return lease;
+        }).collect(Collectors.toList());
+    }
     /**
      * Helper method.
      *
@@ -1891,4 +2106,33 @@ public class ShardSyncerTest {
         return new NonEmptyLeaseTableSynchronizer(shardIdToShardMap, shardIdToChildShardIdsMap);
     }
 
+
+    /**
+     * Helper method to mimic behavior of Kinesis ListShardsWithFilter calls.
+     */
+    private static List<Shard> getFilteredShards(List<Shard> shards, InitialPositionInStreamExtended initialPosition) {
+        switch (initialPosition.getInitialPositionInStream()) {
+            case LATEST:
+                return shards.stream()
+                        .filter(s -> s.getSequenceNumberRange().getEndingSequenceNumber() == null)
+                        .collect(Collectors.toList());
+            case TRIM_HORIZON:
+                String minSeqNum = shards.stream()
+                        .min(Comparator.comparingLong(s -> Long.parseLong(s.getSequenceNumberRange().getStartingSequenceNumber())))
+                        .map(s -> s.getSequenceNumberRange().getStartingSequenceNumber())
+                        .orElseThrow(RuntimeException::new);
+                return shards.stream()
+                        .filter(s -> s.getSequenceNumberRange().getStartingSequenceNumber().equals(minSeqNum))
+                        .collect(Collectors.toList());
+            case AT_TIMESTAMP:
+                return shards.stream()
+                        .filter(s -> new Date(Long.parseLong(s.getSequenceNumberRange().getStartingSequenceNumber()))
+                                .compareTo(initialPosition.getTimestamp()) <= 0)
+                        .filter(s -> s.getSequenceNumberRange().getEndingSequenceNumber() == null ||
+                                new Date(Long.parseLong(s.getSequenceNumberRange().getEndingSequenceNumber()))
+                                        .compareTo(initialPosition.getTimestamp()) > 0)
+                        .collect(Collectors.toList());
+        }
+        throw new RuntimeException("Unsupported initial position " + initialPosition);
+    }
 }
