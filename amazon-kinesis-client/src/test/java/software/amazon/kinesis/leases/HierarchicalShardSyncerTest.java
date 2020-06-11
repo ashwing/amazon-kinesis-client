@@ -89,7 +89,6 @@ public class HierarchicalShardSyncerTest {
     private static final HierarchicalShardSyncer.MultiStreamArgs MULTI_STREAM_ARGS = new HierarchicalShardSyncer.MultiStreamArgs(
             MULTISTREAM_MODE_ON, StreamIdentifier.multiStreamInstance(STREAM_IDENTIFIER));
 
-    private final boolean garbageCollectLeases = true;
     private final boolean ignoreUnexpectedChildShards = false;
 
     private HierarchicalShardSyncer hierarchicalShardSyncer;
@@ -301,7 +300,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        SCOPE, false, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                        SCOPE, false, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final Set<String> expectedShardIds = new HashSet<>(
                 Arrays.asList("shardId-4", "shardId-8", "shardId-9", "shardId-10"));
@@ -336,7 +335,7 @@ public class HierarchicalShardSyncerTest {
         setupMultiStream();
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        SCOPE, false, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                        SCOPE, false, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final Set<String> expectedShardIds = new HashSet<>(
                 toMultiStreamLeaseList(Arrays.asList("shardId-4", "shardId-8", "shardId-9", "shardId-10")));
@@ -379,7 +378,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        latestShards, false, SCOPE, garbageCollectLeases,
+                        latestShards, false, SCOPE,
                         dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final Set<String> expectedShardIds = new HashSet<>(
@@ -418,7 +417,7 @@ public class HierarchicalShardSyncerTest {
         setupMultiStream();
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        latestShards, false, SCOPE, garbageCollectLeases,
+                        latestShards, false, SCOPE,
                         dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final Set<String> expectedShardIds = new HashSet<>(
@@ -455,7 +454,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        new ArrayList<Shard>(), false, SCOPE, garbageCollectLeases,
+                        new ArrayList<Shard>(), false, SCOPE,
                         dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final Set<String> expectedShardIds = new HashSet<>();
@@ -662,7 +661,7 @@ public class HierarchicalShardSyncerTest {
 
         try {
             hierarchicalShardSyncer.checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher,
-                    INITIAL_POSITION_TRIM_HORIZON, SCOPE, false, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                    INITIAL_POSITION_TRIM_HORIZON, SCOPE, false, dynamoDBLeaseRefresher.isLeaseTableEmpty());
         } finally {
             verify(shardDetector).listShards();
             verify(dynamoDBLeaseRefresher, never()).listLeases();
@@ -682,7 +681,7 @@ public class HierarchicalShardSyncerTest {
         setupMultiStream();
         try {
             hierarchicalShardSyncer.checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher,
-                    INITIAL_POSITION_TRIM_HORIZON, SCOPE, false, garbageCollectLeases,
+                    INITIAL_POSITION_TRIM_HORIZON, SCOPE, false,
                     dynamoDBLeaseRefresher.isLeaseTableEmpty());
         } finally {
             verify(shardDetector).listShards();
@@ -718,7 +717,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        SCOPE, true, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                        SCOPE, true, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final List<Lease> leases = leaseCaptor.getAllValues();
         final Set<String> leaseKeys = leases.stream().map(Lease::leaseKey).collect(Collectors.toSet());
@@ -763,7 +762,7 @@ public class HierarchicalShardSyncerTest {
         setupMultiStream();
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        SCOPE, true, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                        SCOPE, true, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final List<Lease> leases = leaseCaptor.getAllValues();
         final Set<String> leaseKeys = leases.stream().map(Lease::leaseKey).collect(Collectors.toSet());
@@ -819,7 +818,7 @@ public class HierarchicalShardSyncerTest {
 
         // Initial call: No leases present, create leases.
         hierarchicalShardSyncer.checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final Set<Lease> createLeases = new HashSet<>(leaseCreateCaptor.getAllValues());
 
@@ -834,7 +833,7 @@ public class HierarchicalShardSyncerTest {
 
         // Second call: Leases present, no leases should be deleted.
         hierarchicalShardSyncer.checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
         final List<Lease> deleteLeases = leaseDeleteCaptor.getAllValues();
         final Set<String> shardIds = deleteLeases.stream().map(Lease::leaseKey).collect(Collectors.toSet());
         final Set<ExtendedSequenceNumber> sequenceNumbers = deleteLeases.stream().map(Lease::checkpoint)
@@ -845,62 +844,6 @@ public class HierarchicalShardSyncerTest {
         verify(shardDetector, times(2)).listShards();
         verify(dynamoDBLeaseRefresher, times(expectedCreateLeases.size())).createLeaseIfNotExists(any(Lease.class));
         verify(dynamoDBLeaseRefresher, times(2)).listLeases();
-        verify(dynamoDBLeaseRefresher, times(1)).deleteLease(any(Lease.class));
-    }
-
-    @Test(expected = DependencyException.class)
-    public void testCheckAndCreateLeasesForNewShardsAtTrimHorizonAndClosedShardWithDeleteLeaseExceptions()
-            throws Exception {
-        testCheckAndCreateLeasesForNewShardsAndClosedShardWithDeleteLeaseExceptions(ExtendedSequenceNumber.TRIM_HORIZON,
-                INITIAL_POSITION_TRIM_HORIZON);
-    }
-
-    @Test(expected = DependencyException.class)
-    public void testCheckAndCreateLeasesForNewShardsAtTimestampAndClosedShardWithDeleteLeaseExceptions()
-            throws Exception {
-        testCheckAndCreateLeasesForNewShardsAndClosedShardWithDeleteLeaseExceptions(ExtendedSequenceNumber.AT_TIMESTAMP,
-                INITIAL_POSITION_AT_TIMESTAMP);
-    }
-
-    private void testCheckAndCreateLeasesForNewShardsAndClosedShardWithDeleteLeaseExceptions(
-            final ExtendedSequenceNumber sequenceNumber,
-            final InitialPositionInStreamExtended position)
-            throws Exception {
-        final String shardIdPrefix = "shardId-%d";
-        final List<Shard> shards = constructShardListForGraphA();
-        final List<Lease> leases = createLeasesFromShards(shards, sequenceNumber, LEASE_OWNER);
-
-        // Marking shardId-0 as ShardEnd.
-        leases.stream().filter(lease -> String.format(shardIdPrefix, 0).equals(lease.leaseKey())).findFirst()
-                .ifPresent(lease -> lease.checkpoint(ExtendedSequenceNumber.SHARD_END));
-
-        // Marking child of shardId-0 to be processed and not at TRIM_HORIZON.
-        leases.stream().filter(lease -> String.format(shardIdPrefix, 6).equals(lease.leaseKey())).findFirst()
-                .ifPresent(lease -> lease.checkpoint(new ExtendedSequenceNumber("1")));
-
-        final ArgumentCaptor<Lease> leaseCreateCaptor = ArgumentCaptor.forClass(Lease.class);
-        final ArgumentCaptor<Lease> leaseDeleteCaptor = ArgumentCaptor.forClass(Lease.class);
-
-        when(shardDetector.listShards()).thenReturn(shards);
-        when(dynamoDBLeaseRefresher.listLeases()).thenReturn(Collections.emptyList()).thenReturn(leases);
-        when(dynamoDBLeaseRefresher.createLeaseIfNotExists(leaseCreateCaptor.capture())).thenReturn(true);
-        doThrow(new DependencyException(new Throwable("Throw for DeleteLease"))).doNothing()
-                .when(dynamoDBLeaseRefresher).deleteLease(leaseDeleteCaptor.capture());
-
-        // Initial call: Call to create leases.
-        hierarchicalShardSyncer.checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                SCOPE, cleanupLeasesOfCompletedShards, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
-
-        final Set<Lease> createLeases = new HashSet<>(leaseCreateCaptor.getAllValues());
-
-        final Set<Lease> expectedCreateLeases = getExpectedLeasesForGraphA(shards, sequenceNumber, position);
-
-        assertThat(createLeases, equalTo(expectedCreateLeases));
-
-        verify(shardDetector, times(1)).listShards();
-        verify(dynamoDBLeaseRefresher, times(1)).listLeases();
-        verify(dynamoDBLeaseRefresher, times(expectedCreateLeases.size())).createLeaseIfNotExists(any(Lease.class));
-        verify(dynamoDBLeaseRefresher, never()).deleteLease(any(Lease.class));
     }
 
     @Test(expected = DependencyException.class)
@@ -944,7 +887,7 @@ public class HierarchicalShardSyncerTest {
             // Initial call: Call to create leases. Fails on ListLeases
             hierarchicalShardSyncer
                     .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                            SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                            SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
         } finally {
             verify(shardDetector, times(1)).listShards();
             verify(dynamoDBLeaseRefresher, times(1)).listLeases();
@@ -954,7 +897,7 @@ public class HierarchicalShardSyncerTest {
             // Second call: Leases not present, leases will be created.
             hierarchicalShardSyncer
                     .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                            SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                            SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
             final Set<Lease> createLeases = new HashSet<>(leaseCreateCaptor.getAllValues());
             final Set<Lease> expectedCreateLeases = getExpectedLeasesForGraphA(shards, sequenceNumber, position);
@@ -969,7 +912,7 @@ public class HierarchicalShardSyncerTest {
             // Final call: Leases present, belongs to TestOwner, shardId-0 is at ShardEnd should be cleaned up.
             hierarchicalShardSyncer
                     .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                            SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                            SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
             final Set<String> expectedShardIds = new HashSet<>(
                     Collections.singletonList(String.format(shardIdPrefix, 0)));
@@ -1024,7 +967,7 @@ public class HierarchicalShardSyncerTest {
             // Initial call: No leases present, create leases. Create lease Fails
             hierarchicalShardSyncer
                     .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                            SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                            SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
         } finally {
             verify(shardDetector, times(1)).listShards();
             verify(dynamoDBLeaseRefresher, times(1)).listLeases();
@@ -1033,7 +976,7 @@ public class HierarchicalShardSyncerTest {
 
             hierarchicalShardSyncer
                     .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                            SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                            SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
             final Set<Lease> createLeases = new HashSet<>(leaseCreateCaptor.getAllValues());
 
@@ -1049,7 +992,7 @@ public class HierarchicalShardSyncerTest {
             // Final call: Leases are present, shardId-0 is at ShardEnd needs to be cleaned up.
             hierarchicalShardSyncer
                     .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, position,
-                            SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                            SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
             verify(shardDetector, times(3)).listShards();
             verify(dynamoDBLeaseRefresher, times(1 + expectedCreateLeases.size()))
@@ -1107,64 +1050,6 @@ public class HierarchicalShardSyncerTest {
         }).collect(Collectors.toList());
     }
 
-    @Test
-    public void testCleanUpGarbageLeaseForNonExistentShard() throws Exception {
-        final List<Shard> shards = constructShardListForGraphA();
-        final String garbageShardId = "shardId-garbage-001";
-        final Shard garbageShard = ShardObjectHelper.newShard(garbageShardId, null, null,
-                ShardObjectHelper.newSequenceNumberRange("101", null));
-        final Lease garbageLease = createLeaseFromShard(garbageShard, new ExtendedSequenceNumber("99"), LEASE_OWNER);
-        final List<Lease> leases = new ArrayList<>(
-                createLeasesFromShards(shards, ExtendedSequenceNumber.TRIM_HORIZON, LEASE_OWNER));
-        leases.add(garbageLease);
-
-        final ArgumentCaptor<Lease> leaseCaptor = ArgumentCaptor.forClass(Lease.class);
-
-        when(shardDetector.listShards()).thenReturn(shards);
-        when(dynamoDBLeaseRefresher.listLeases()).thenReturn(leases);
-        doNothing().when(dynamoDBLeaseRefresher).deleteLease(leaseCaptor.capture());
-
-        hierarchicalShardSyncer.checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher,
-                INITIAL_POSITION_TRIM_HORIZON, SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
-
-        assertThat(leaseCaptor.getAllValues().size(), equalTo(1));
-        assertThat(leaseCaptor.getValue(), equalTo(garbageLease));
-
-        verify(shardDetector, times(2)).listShards();
-        verify(dynamoDBLeaseRefresher).listLeases();
-        verify(dynamoDBLeaseRefresher).deleteLease(any(Lease.class));
-        verify(dynamoDBLeaseRefresher, never()).createLeaseIfNotExists(any(Lease.class));
-    }
-
-    @Test
-    public void testCleanUpGarbageLeaseForNonExistentShardForMultiStream() throws Exception {
-        final List<Shard> shards = constructShardListForGraphA();
-        final String garbageShardId = "shardId-garbage-001";
-        final Shard garbageShard = ShardObjectHelper.newShard(garbageShardId, null, null,
-                ShardObjectHelper.newSequenceNumberRange("101", null));
-        final Lease garbageLease = createMultiStreamLeaseFromShard(garbageShard, new ExtendedSequenceNumber("99"), LEASE_OWNER);
-        final List<Lease> leases = new ArrayList<>(
-                createMultiStreamLeasesFromShards(shards, ExtendedSequenceNumber.TRIM_HORIZON, LEASE_OWNER));
-        leases.add(garbageLease);
-
-        final ArgumentCaptor<Lease> leaseCaptor = ArgumentCaptor.forClass(Lease.class);
-
-        when(shardDetector.listShards()).thenReturn(shards);
-        when(dynamoDBLeaseRefresher.listLeasesForStream(any(StreamIdentifier.class))).thenReturn(leases);
-        doNothing().when(dynamoDBLeaseRefresher).deleteLease(leaseCaptor.capture());
-        setupMultiStream();
-        hierarchicalShardSyncer.checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher,
-                INITIAL_POSITION_TRIM_HORIZON, SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
-
-        assertThat(leaseCaptor.getAllValues().size(), equalTo(1));
-        assertThat(leaseCaptor.getValue(), equalTo(garbageLease));
-
-        verify(shardDetector, times(2)).listShards();
-        verify(dynamoDBLeaseRefresher).listLeasesForStream(any(StreamIdentifier.class));
-        verify(dynamoDBLeaseRefresher).deleteLease(any(Lease.class));
-        verify(dynamoDBLeaseRefresher, never()).createLeaseIfNotExists(any(Lease.class));
-    }
-
     private void testCheckAndCreateLeasesForShardsIfMissing(InitialPositionInStreamExtended initialPosition)
             throws Exception {
         final String shardId0 = "shardId-0";
@@ -1200,7 +1085,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, initialPosition,
-                        SCOPE, false, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                        SCOPE, false, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         final List<Lease> leases = leaseCaptor.getAllValues();
         final Set<String> leaseKeys = leases.stream().map(Lease::leaseKey).collect(Collectors.toSet());
@@ -2394,7 +2279,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, initialPosition,
-                        SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                        SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         verify(shardDetector, atLeast(1)).listShardsWithFilter(shardFilter);
         verify(shardDetector, never()).listShards();
@@ -2416,7 +2301,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases, dynamoDBLeaseRefresher.isLeaseTableEmpty());
+                        SCOPE, ignoreUnexpectedChildShards, dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         verify(shardDetector, atLeast(1)).listShards();
     }
@@ -2439,7 +2324,7 @@ public class HierarchicalShardSyncerTest {
         try {
             hierarchicalShardSyncer
                     .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                            SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases,
+                            SCOPE, ignoreUnexpectedChildShards,
                             dynamoDBLeaseRefresher.isLeaseTableEmpty());
         } finally {
             verify(shardDetector, times(3)).listShardsWithFilter(any(ShardFilter.class)); // Verify retries.
@@ -2468,7 +2353,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases,
+                        SCOPE, ignoreUnexpectedChildShards,
                         dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         verify(shardDetector, times(3)).listShardsWithFilter(any(ShardFilter.class)); // Verify retries.
@@ -2491,7 +2376,7 @@ public class HierarchicalShardSyncerTest {
 
         hierarchicalShardSyncer
                 .checkAndCreateLeaseForNewShards(shardDetector, dynamoDBLeaseRefresher, INITIAL_POSITION_LATEST,
-                        SCOPE, ignoreUnexpectedChildShards, garbageCollectLeases,
+                        SCOPE, ignoreUnexpectedChildShards,
                         dynamoDBLeaseRefresher.isLeaseTableEmpty());
 
         verify(shardDetector, times(1)).listShardsWithFilter(any(ShardFilter.class)); // Verify retries.

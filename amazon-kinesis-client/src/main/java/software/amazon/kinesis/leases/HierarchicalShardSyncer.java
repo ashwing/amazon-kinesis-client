@@ -17,15 +17,11 @@ package software.amazon.kinesis.leases;
 import java.io.Serializable;
 import java.math.BigInteger;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiFunction;
@@ -107,7 +103,6 @@ public class HierarchicalShardSyncer {
      * @param initialPosition
      * @param scope
      * @param ignoreUnexpectedChildShards
-     * @param garbageCollectLeases
      * @throws DependencyException
      * @throws InvalidStateException
      * @throws ProvisionedThroughputException
@@ -116,20 +111,18 @@ public class HierarchicalShardSyncer {
     // CHECKSTYLE:OFF CyclomaticComplexity
     public synchronized void checkAndCreateLeaseForNewShards(@NonNull final ShardDetector shardDetector,
             final LeaseRefresher leaseRefresher, final InitialPositionInStreamExtended initialPosition,
-            final MetricsScope scope, final boolean ignoreUnexpectedChildShards,
-            final boolean garbageCollectLeases, final boolean isLeaseTableEmpty)
+            final MetricsScope scope, final boolean ignoreUnexpectedChildShards, final boolean isLeaseTableEmpty)
             throws DependencyException, InvalidStateException, ProvisionedThroughputException, KinesisClientLibIOException, InterruptedException {
         final List<Shard> latestShards = isLeaseTableEmpty ?
                 getShardListAtInitialPosition(shardDetector, initialPosition) : getShardList(shardDetector);
-        checkAndCreateLeaseForNewShards(shardDetector, leaseRefresher, initialPosition, latestShards, ignoreUnexpectedChildShards, scope, garbageCollectLeases,
+        checkAndCreateLeaseForNewShards(shardDetector, leaseRefresher, initialPosition, latestShards, ignoreUnexpectedChildShards, scope,
                 isLeaseTableEmpty);
     }
 
     //Provide a pre-collcted list of shards to avoid calling ListShards API
     public synchronized void checkAndCreateLeaseForNewShards(@NonNull final ShardDetector shardDetector,
             final LeaseRefresher leaseRefresher, final InitialPositionInStreamExtended initialPosition,
-            List<Shard> latestShards, final boolean ignoreUnexpectedChildShards,
-            final MetricsScope scope, final boolean garbageCollectLeases, final boolean isLeaseTableEmpty)
+            List<Shard> latestShards, final boolean ignoreUnexpectedChildShards, final MetricsScope scope, final boolean isLeaseTableEmpty)
             throws DependencyException, InvalidStateException, ProvisionedThroughputException, KinesisClientLibIOException {
 
         //TODO: Need to add multistream support for this https://sim.amazon.com/issues/KinesisLTR-191
@@ -165,9 +158,6 @@ public class HierarchicalShardSyncer {
         }
         final List<Lease> trackedLeases = new ArrayList<>(currentLeases);
         trackedLeases.addAll(newLeasesToCreate);
-        if (!isLeaseTableEmpty && garbageCollectLeases) {
-            cleanupGarbageLeases(shardDetector, latestShards, trackedLeases, leaseRefresher, multiStreamArgs);
-        }
     }
 
     /** Helper method to detect a race condition between fetching the shards via paginated DescribeStream calls
@@ -572,91 +562,6 @@ public class HierarchicalShardSyncer {
             parentShardIds.add(adjacentParentShardId);
         }
         return parentShardIds;
-    }
-
-    /**
-     * Delete leases corresponding to shards that no longer exist in the stream. Current scheme: Delete a lease if:
-     * <ul>
-     * <li>The corresponding shard is not present in the list of Kinesis shards</li>
-     * <li>The parentShardIds listed in the lease are also not present in the list of Kinesis shards.</li>
-     * </ul>
-     *
-     * @param shards
-     *            List of all Kinesis shards (assumed to be a consistent snapshot - when stream is in Active state).
-     * @param trackedLeases
-     *            List of
-     * @param leaseRefresher
-     * @throws KinesisClientLibIOException
-     *             Thrown if we couldn't get a fresh shard list from Kinesis.
-     * @throws ProvisionedThroughputException
-     * @throws InvalidStateException
-     * @throws DependencyException
-     */
-    private static void cleanupGarbageLeases(@NonNull final ShardDetector shardDetector, final List<Shard> shards,
-            final List<Lease> trackedLeases, final LeaseRefresher leaseRefresher,
-            final MultiStreamArgs multiStreamArgs) throws KinesisClientLibIOException,
-            DependencyException, InvalidStateException, ProvisionedThroughputException {
-        final String streamIdentifier = getStreamIdentifier(multiStreamArgs);
-        final Set<String> kinesisShards = shards.stream().map(Shard::shardId).collect(Collectors.toSet());
-
-        // Check if there are leases for non-existent shards
-        final List<Lease> garbageLeases = trackedLeases.stream()
-                .filter(lease -> isCandidateForCleanup(lease, kinesisShards, multiStreamArgs)).collect(Collectors.toList());
-
-        if (!CollectionUtils.isNullOrEmpty(garbageLeases)) {
-            log.info("{} : Found {} candidate leases for cleanup. Refreshing list of"
-                    + " Kinesis shards to pick up recent/latest shards", streamIdentifier, garbageLeases.size());
-            final Set<String> currentKinesisShardIds = getShardList(shardDetector).stream().map(Shard::shardId)
-                    .collect(Collectors.toSet());
-
-            for (Lease lease : garbageLeases) {
-                if (isCandidateForCleanup(lease, currentKinesisShardIds, multiStreamArgs)) {
-                    log.info("{} : Deleting lease for shard {} as it is not present in Kinesis stream.",
-                            streamIdentifier, lease.leaseKey());
-                    leaseRefresher.deleteLease(lease);
-                }
-            }
-        }
-    }
-
-    /**
-     * Note: This method has package level access, solely for testing purposes.
-     * 
-     * @param lease Candidate shard we are considering for deletion.
-     * @param currentKinesisShardIds
-     * @return true if neither the shard (corresponding to the lease), nor its parents are present in
-     *         currentKinesisShardIds
-     * @throws KinesisClientLibIOException Thrown if currentKinesisShardIds contains a parent shard but not the child
-     *         shard (we are evaluating for deletion).
-     */
-    static boolean isCandidateForCleanup(final Lease lease, final Set<String> currentKinesisShardIds,
-            final MultiStreamArgs multiStreamArgs)
-            throws KinesisClientLibIOException {
-
-        final String streamIdentifier = getStreamIdentifier(multiStreamArgs);
-
-        boolean isCandidateForCleanup = true;
-        final String shardId = shardIdFromLeaseDeducer.apply(lease, multiStreamArgs);
-
-        if (currentKinesisShardIds.contains(shardId)) {
-            isCandidateForCleanup = false;
-        } else {
-            log.info("{} : Found lease for non-existent shard: {}. Checking its parent shards", streamIdentifier, shardId);
-            final Set<String> parentShardIds = lease.parentShardIds();
-            for (String parentShardId : parentShardIds) {
-                
-                // Throw an exception if the parent shard exists (but the child does not).
-                // This may be a (rare) race condition between fetching the shard list and Kinesis expiring shards. 
-                if (currentKinesisShardIds.contains(parentShardId)) {
-                    final String message = String.format("Parent shard %s exists but not the child shard %s",
-                            parentShardId, shardId);
-                    log.info("{} : {}", streamIdentifier, message);
-                    throw new KinesisClientLibIOException(message);
-                }
-            }
-        }
-
-        return isCandidateForCleanup;
     }
 
     public synchronized Lease createLeaseForChildShard(final ChildShard childShard, final StreamIdentifier streamIdentifier) throws InvalidStateException {
