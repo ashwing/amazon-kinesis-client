@@ -863,29 +863,16 @@ public class ShardSyncerTest {
      * Leases to create: (2, 6)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateSplitMergeLatest1() {
-        List<Shard> shards = constructShardListForGraphA();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
+    public final void testDetermineNewLeasesToCreateSplitMergeLatestA_PartialHashRange1() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-3", "shardId-4", "shardId-5");
 
-        currentLeases.add(newLease("shardId-3"));
-        currentLeases.add(newLease("shardId-4"));
-        currentLeases.add(newLease("shardId-5"));
-
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_LATEST);
-        Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
         expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.LATEST);
         expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.LATEST);
 
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
     }
 
     /**
@@ -901,28 +888,15 @@ public class ShardSyncerTest {
      * Leases to create: (6)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateSplitMergeLatest2() {
-        List<Shard> shards = constructShardListForGraphA();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
+    public final void testDetermineNewLeasesToCreateSplitMergeLatestA_PartialHashRange2() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-5", "shardId-7");
 
-        currentLeases.add(newLease("shardId-4"));
-        currentLeases.add(newLease("shardId-5"));
-        currentLeases.add(newLease("shardId-7"));
-
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_LATEST);
-        Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
         expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.LATEST);
 
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
     }
 
     /**
@@ -933,35 +907,23 @@ public class ShardSyncerTest {
      *  6   7  4   5- shards from epoch 103 - 205
      *   \ /   |  /\
      *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
-     * Current leases: (3, 4, 5)
-     * Initial position: TRIM_HORIZON
-     * Leases to create: (0, 1, 2)
+     * Current leases: (2, 6)
+     * Initial position: LATEST
+     * Leases to create: (3, 4, 9, 10)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateSplitMergeHorizon1() {
+    public final void testDetermineNewLeasesToCreateSplitMergeLatestA_PartialHashRange3() {
         List<Shard> shards = constructShardListForGraphA();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-2", "shardId-6");
 
-        currentLeases.add(newLease("shardId-3"));
-        currentLeases.add(newLease("shardId-4"));
-        currentLeases.add(newLease("shardId-5"));
-
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_TRIM_HORIZON);
         Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-3", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-4", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.LATEST);
 
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
     }
 
     /**
@@ -972,66 +934,252 @@ public class ShardSyncerTest {
      *  6   7  4   5- shards from epoch 103 - 205
      *   \ /   |  /\
      *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
-     * Current leases: (4, 5, 7)
-     * Initial position: TRIM_HORIZON
-     * Leases to create: (6)
+     * Current leases: (4, 9, 10)
+     * Initial position: LATEST
+     * Leases to create: (8)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateSplitMergeHorizon2() {
-        List<Shard> shards = constructShardListForGraphA();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
+    public final void testDetermineNewLeasesToCreateSplitMergeLatestA_PartialHashRange4() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-9", "shardId-10");
 
-        currentLeases.add(newLease("shardId-4"));
-        currentLeases.add(newLease("shardId-5"));
-        currentLeases.add(newLease("shardId-7"));
-
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_TRIM_HORIZON);
-        Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
                 new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
-        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.LATEST);
 
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
     }
 
     /**
-     * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position TrimHorizon)
-     * For shard graph B (see the construct method doc for structure).
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Helper method to construct a shard list for graph C. Graph C is defined below. Shard structure (y-axis is
+     * epochs):     0      1  2  3  - shards till
+     *            /   \    |  \ /
+     *           4     5   1   6  - shards from epoch 103 - 205
+     *          / \   / \  |   |
+     *         7   8 9  10 1   6
+     * shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (9, 10)
+     * Initial position: LATEST
+     * Expected leases: (1, 6, 7, 8)
+     */
+    @Test
+    public final void testDetermineNewLeasesToCreateSplitMergeLatestC_PartialHashRange5() {
+        final List<Shard> shards = constructShardListForGraphC();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-9", "shardId-10");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-6", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-7", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.LATEST);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position AT_TIMESTAMP)
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (4, 5, 6, 7)
+     * Initial position: LATEST
+     * Leases to create: empty set
+     */
+    @Test
+    public final void testDetermineNewLeasesToCreateSplitMergeLatestA_CompleteHashRange() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-5", "shardId-6", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (0, 1, 2, 3, 4, 5, 6, 7)
+     * Initial position: LATEST
+     * Expected leases: empty set
+     */
+    @Test
+    public final void testDetermineNewLeasesToCreateSplitMergeLatestA_CompleteHashRangeWithoutGC() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-2",
+                "shardId-3", "shardId-4", "shardId-5", "shardId-6", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = Collections.emptyMap();
+
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: empty set
+     * Initial position: LATEST
+     * Expected leases: (4, 8, 9, 10)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeLatestA_EmptyLeaseTable() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Collections.emptyList();
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-4", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-8", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.LATEST);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (0, 1, 4, 7, 9, 10)
+     * Initial position: LATEST
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeLatestA_CompleteHashRangeAcrossDifferentEpochs() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-4", "shardId-7",
+                "shardId-9", "shardId-10");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (6)
+     * Initial position: LATEST
+     * Expected leases: (7)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeLatestB_PartialHashRange() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-6");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-7", ExtendedSequenceNumber.LATEST);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (5)
+     * Initial position: LATEST
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeLatestB_CompleteHashRange() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (0, 1, 2, 3, 4, 5)
+     * Initial position: LATEST
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeLatestB_CompleteHashRangeWithoutGC() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-2", "shardId-3",
+                "shardId-4", "shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
      *
      * Current leases: empty set
+     * Initial position: LATEST
+     * Expected leases: (9, 10)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateGraphBNoInitialLeasesTrim() {
-        List<Shard> shards = constructShardListForGraphB();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_TRIM_HORIZON);
-        Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
-                new HashMap<String, ExtendedSequenceNumber>();
-        for (int i = 0; i < 11; i++) {
-            String expectedShardId = "shardId-" + i;
-            expectedShardIdCheckpointMap.put(expectedShardId, ExtendedSequenceNumber.TRIM_HORIZON);
-        }
-
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+    public void testDetermineNewLeasesToCreateSplitMergeLatestB_EmptyLeaseTable() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Collections.emptyList();
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-9", ExtendedSequenceNumber.LATEST);
+        expectedShardIdCheckpointMap.put("shardId-10", ExtendedSequenceNumber.LATEST);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_LATEST, expectedShardIdCheckpointMap);
     }
 
     /**
-     * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position AT_TIMESTAMP)
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
      * Shard structure (each level depicts a stream segment):
      * 0 1 2 3 4   5- shards till epoch 102
      * \ / \ / |   |
@@ -1039,37 +1187,22 @@ public class ShardSyncerTest {
      *   \ /   |  /\
      *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (3, 4, 5)
-     * Initial position: AT_TIMESTAMP
-     * Leases to create: (0, 1, 2)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: (0, 1, 2)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateSplitMergeAtTimestamp1() {
-        List<Shard> shards = constructShardListForGraphA();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
-
-        currentLeases.add(newLease("shardId-3"));
-        currentLeases.add(newLease("shardId-4"));
-        currentLeases.add(newLease("shardId-5"));
-
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_AT_TIMESTAMP);
-        Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
-
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_PartialHashRange1() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-3", "shardId-4", "shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.TRIM_HORIZON);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedShardIdCheckpointMap);
     }
 
     /**
-     * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position AT_TIMESTAMP)
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
      * Shard structure (each level depicts a stream segment):
      * 0 1 2 3 4   5- shards till epoch 102
      * \ / \ / |   |
@@ -1077,70 +1210,576 @@ public class ShardSyncerTest {
      *   \ /   |  /\
      *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Current leases: (4, 5, 7)
-     * Initial position: AT_TIMESTAMP
-     * Leases to create: (0, 1)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: (0, 1)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateSplitMergeAtTimestamp2() {
-        List<Shard> shards = constructShardListForGraphA();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
-
-        currentLeases.add(newLease("shardId-4"));
-        currentLeases.add(newLease("shardId-5"));
-        currentLeases.add(newLease("shardId-7"));
-
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_AT_TIMESTAMP);
-        Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<String, ExtendedSequenceNumber>();
-        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
-        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
-
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_PartialHashRange2() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-5", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedShardIdCheckpointMap);
     }
 
     /**
-     * Test CheckIfDescendantAndAddNewLeasesForAncestors (initial position AT_TIMESTAMP)
-     * For shard graph B (see the construct method doc for structure).
-     * Current leases: empty set
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (2, 6)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: (3, 4, 5)
      */
     @Test
-    public final void testDetermineNewLeasesToCreateGraphBNoInitialLeasesAtTimestamp() {
-        List<Shard> shards = constructShardListForGraphB();
-        List<KinesisClientLease> currentLeases = new ArrayList<KinesisClientLease>();
-        final LeaseSynchronizer leaseSynchronizer = getLeaseSynchronizer(shards, currentLeases);
-        List<KinesisClientLease> newLeases =
-                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, INITIAL_POSITION_AT_TIMESTAMP);
-        Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap =
-                new HashMap<String, ExtendedSequenceNumber>();
-        for (int i = 0; i < shards.size(); i++) {
-            String expectedShardId = "shardId-" + i;
-            expectedShardIdCheckpointMap.put(expectedShardId, ExtendedSequenceNumber.AT_TIMESTAMP);
-        }
-
-        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
-        for (KinesisClientLease lease : newLeases) {
-            Assert.assertTrue("Unexpected lease: " + lease,
-                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
-            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
-        }
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_PartialHashRange3() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-2", "shardId-6");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-3", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-4", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-5", ExtendedSequenceNumber.TRIM_HORIZON);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedShardIdCheckpointMap);
     }
 
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (4, 9, 10)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: (0, 1, 2, 3)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_PartialHashRange4() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-9", "shardId-10");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-3", ExtendedSequenceNumber.TRIM_HORIZON);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedShardIdCheckpointMap);
+    }
 
-    /*
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (4, 5, 6, 7)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_CompleteHashRange() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-5", "shardId-6", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedNoNewLeases);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (0, 1, 2, 3, 4, 5, 6, 7)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_CompleteHashRangeWithoutGC() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-2", "shardId-3",
+                "shardId-4", "shardId-5", "shardId-6", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedNoNewLeases);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: empty set
+     * Initial position: TRIM_HORIZON
+     * Expected leases: (0, 1, 2, 3, 4, 5)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_EmptyLeaseTable() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Collections.emptyList();
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-3", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-4", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-5", ExtendedSequenceNumber.TRIM_HORIZON);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (0, 1, 4, 7, 9, 10)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonA_CompleteHashRangeAcrossDifferentEpochs() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-4", "shardId-7",
+                "shardId-9", "shardId-10");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (6)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: (7)
+     */
+//    TODO: Account for out-of-order lease creation in TRIM_HORIZON and AT_TIMESTAMP cases
+//    @Test
+//    public void testDetermineNewLeasesToCreateSplitMergeHorizonB_PartialHashRange() {
+//        final List<Shard> shards = constructShardListForGraphB();
+//        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-6");
+//        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+//        expectedShardIdCheckpointMap.put("shardId-7", ExtendedSequenceNumber.TRIM_HORIZON);
+//        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedShardIdCheckpointMap);
+//    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (5)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonB_CompleteHashRange() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (0, 1, 2, 3, 4, 5)
+     * Initial position: TRIM_HORIZON
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonB_CompleteHashRangeWithoutGC() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-2", "shardId-3",
+                "shardId-4", "shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedNoNewLeases);
+    }
+
+    /**
+     * CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)p
+     *
+     * Current leases: empty set
+     * Initial position: TRIM_HORIZON
+     * Expected leases: (0, 1)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeHorizonB_EmptyLeaseTable() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Collections.emptyList();
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.TRIM_HORIZON);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.TRIM_HORIZON);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_TRIM_HORIZON, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (3, 4, 5)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: (0, 1, 2)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_PartialHashRange1() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-3", "shardId-4", "shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.AT_TIMESTAMP);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (4, 5, 7)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: (0, 1)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_PartialHashRange2() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-5", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (2, 6)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: (3, 4, 5)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_PartialHashRange3() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-2", "shardId-6");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-3", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-4", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-5", ExtendedSequenceNumber.AT_TIMESTAMP);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (4, 9, 10)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: (0, 1, 2, 3)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_PartialHashRange4() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-9", "shardId-10");
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-3", ExtendedSequenceNumber.AT_TIMESTAMP);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (4, 5, 6, 7)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_CompleteHashRange() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-4", "shardId-5", "shardId-6", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedNoNewLeases);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (0, 1, 2, 3, 4, 5, 6, 7)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_CompleteHashRangeWithoutGC() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-2", "shardId-3",
+                "shardId-4", "shardId-5", "shardId-6", "shardId-7");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedNoNewLeases);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: empty set
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: (0, 1, 2, 3, 4, 5)     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_EmptyLeaseTable() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Collections.emptyList();
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-2", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-3", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-4", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-5", ExtendedSequenceNumber.AT_TIMESTAMP);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedShardIdCheckpointMap);
+    }
+
+    /**
+     * Test CheckIfDescendantAndAddNewLeasesForAncestors
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Current leases: (0, 1, 4, 7, 9, 10)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampA_CompleteHashRangeAcrossDifferentEpochs() {
+        final List<Shard> shards = constructShardListForGraphA();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-4", "shardId-7",
+                "shardId-9", "shardId-10");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (6)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: (7)
+     */
+//    TODO: Account for out-of-order lease creation in TRIM_HORIZON and AT_TIMESTAMP cases
+//    @Test
+//    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampB_PartialHashRange() {
+//        final List<Shard> shards = constructShardListForGraphB();
+//        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-6");
+//        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+//        expectedShardIdCheckpointMap.put("shardId-7", ExtendedSequenceNumber.AT_TIMESTAMP);
+//        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedShardIdCheckpointMap);
+//    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (5)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampB_CompleteHashRange() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: (0, 1, 2, 3, 4, 5)
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: empty set
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampB_CompleteHashRangeWithoutGC() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Arrays.asList("shardId-0", "shardId-1", "shardId-2", "shardId-3",
+                "shardId-4", "shardId-5");
+        final Map<String, ExtendedSequenceNumber> expectedNoNewLeases = Collections.emptyMap();
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedNoNewLeases);
+    }
+
+    /**
+     * Shard structure (x-axis is epochs):
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
+     *
+     * Current leases: empty set
+     * Initial position: AT_TIMESTAMP(1000)
+     * Expected leases: (0, 1)
+     */
+    @Test
+    public void testDetermineNewLeasesToCreateSplitMergeAtTimestampB_EmptyLeaseTable() {
+        final List<Shard> shards = constructShardListForGraphB();
+        final List<String> shardIdsOfCurrentLeases = Collections.emptyList();
+        final Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap = new HashMap<>();
+        expectedShardIdCheckpointMap.put("shardId-0", ExtendedSequenceNumber.AT_TIMESTAMP);
+        expectedShardIdCheckpointMap.put("shardId-1", ExtendedSequenceNumber.AT_TIMESTAMP);
+        testCheckIfDescendantAndAddNewLeasesForAncestors(shards, shardIdsOfCurrentLeases, INITIAL_POSITION_AT_TIMESTAMP, expectedShardIdCheckpointMap);
+    }
+
+    /**
      * Helper method to construct a shard list for graph A. Graph A is defined below.
      * Shard structure (y-axis is epochs):
-     * 0 1 2 3 4 5- shards till epoch 102
-     * \ / \ / | |
-     * 6 7 4 5- shards from epoch 103 - 205
-     * \ / | /\
-     * 8 4 9 10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 210
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 211 (open - no ending sequenceNumber)
      */
     List<Shard> constructShardListForGraphA() {
         List<Shard> shards = new ArrayList<Shard>();
@@ -1180,14 +1819,22 @@ public class ShardSyncerTest {
         return shards;
     }
 
-    /*
+    /**
      * Helper method to construct a shard list for graph B. Graph B is defined below.
      * Shard structure (x-axis is epochs):
-     * 0 3 6 9
-     * \ / \ / \ /
-     * 2 5 8
-     * / \ / \ / \
-     * 1 4 7 10
+     * 0   1    shards till epoch 1049
+     *  \ /
+     *   2      shards from epoch 1050 - 1099
+     *  / \
+     * 3   4    shards from epoch 1100 - 1149
+     *  \ /
+     *   5      shards from epoch 1150 - 1199
+     *  / \
+     * 6   7    shards from epoch 1200 - 1249
+     *  \ /
+     *   8      shards from epoch 1250 - 1299
+     *  / \
+     * 9   10   shards from epoch 1300 (open - no ending sequence number)
      */
     List<Shard> constructShardListForGraphB() {
         List<Shard> shards = new ArrayList<Shard>();
@@ -1218,6 +1865,48 @@ public class ShardSyncerTest {
 
         return shards;
     }
+
+    /**
+     * Helper method to construct a shard list for graph C. Graph C is defined below. Shard structure (y-axis is
+     * epochs):     0      1  2  3  - shards till
+     *            /   \    |  \ /
+     *           4     5   1   6  - shards from epoch 103 - 205
+     *          / \   / \  |   |
+     *         7   8 9  10 1   6
+     * shards from epoch 206 (open - no ending sequenceNumber)
+     */
+    private List<Shard> constructShardListForGraphC() {
+        final SequenceNumberRange range0 = ShardObjectHelper.newSequenceNumberRange("11", "102");
+        final SequenceNumberRange range1 = ShardObjectHelper.newSequenceNumberRange("11", null);
+        final SequenceNumberRange range2 = ShardObjectHelper.newSequenceNumberRange("103", null);
+        final SequenceNumberRange range3 = ShardObjectHelper.newSequenceNumberRange("103", "205");
+        final SequenceNumberRange range4 = ShardObjectHelper.newSequenceNumberRange("206", null);
+
+        return Arrays.asList(
+                ShardObjectHelper.newShard("shardId-0", null, null, range0,
+                        ShardObjectHelper.newHashKeyRange("0", "399")),
+                ShardObjectHelper.newShard("shardId-1", null, null, range1,
+                        ShardObjectHelper.newHashKeyRange("400", "499")),
+                ShardObjectHelper.newShard("shardId-2", null, null, range0,
+                        ShardObjectHelper.newHashKeyRange("500", "599")),
+                ShardObjectHelper.newShard("shardId-3", null, null, range0,
+                        ShardObjectHelper.newHashKeyRange("600", ShardObjectHelper.MAX_HASH_KEY)),
+                ShardObjectHelper.newShard("shardId-4", "shardId-0", null, range3,
+                        ShardObjectHelper.newHashKeyRange("0", "199")),
+                ShardObjectHelper.newShard("shardId-5", "shardId-0", null, range3,
+                        ShardObjectHelper.newHashKeyRange("200", "399")),
+                ShardObjectHelper.newShard("shardId-6", "shardId-2", "shardId-3", range2,
+                        ShardObjectHelper.newHashKeyRange("500", ShardObjectHelper.MAX_HASH_KEY)),
+                ShardObjectHelper.newShard("shardId-7", "shardId-4", null, range4,
+                        ShardObjectHelper.newHashKeyRange("0", "99")),
+                ShardObjectHelper.newShard("shardId-8", "shardId-4", null, range4,
+                        ShardObjectHelper.newHashKeyRange("100", "199")),
+                ShardObjectHelper.newShard("shardId-9", "shardId-5", null, range4,
+                        ShardObjectHelper.newHashKeyRange("200", "299")),
+                ShardObjectHelper.newShard("shardId-10", "shardId-5", null, range4,
+                        ShardObjectHelper.newHashKeyRange("300", "399")));
+    }
+
 
     /**
      * Test CheckIfDescendantAndAddNewLeasesForAncestors when shardId is null
@@ -1980,6 +2669,32 @@ public class ShardSyncerTest {
      *   \ /   |  /\
      *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
      * Missing leases: (0, 6, 8)
+     * Initial position: TRIM_HORIZON
+     * Leases to create: (0)
+     */
+    @Test
+    public void testCheckAndCreateLeasesForNewShardsAtTrimHorizonWithPartialLeaseTable() throws Exception {
+        final List<Shard> shards = constructShardListForGraphA();
+        // Leases for shard-0 and its descendants (shard-6, and shard-8) are missing. Expect lease sync to recover the
+        // lease for shard-0 when reading from TRIM_HORIZON.
+        final Set<String> missingLeaseKeys = new HashSet<>(Arrays.asList("shardId-0", "shardId-6", "shardId-8"));
+        final List<Shard> shardsWithLeases = shards.stream()
+                .filter(s -> !missingLeaseKeys.contains(s.getShardId())).collect(Collectors.toList());
+        final List<KinesisClientLease> existingLeases = createLeasesFromShards(shardsWithLeases, ExtendedSequenceNumber.TRIM_HORIZON, LEASE_OWNER);
+
+        final Set<String> expectedLeaseKeysToCreate = new HashSet<>(Arrays.asList("shardId-0"));
+        testCheckAndCreateLeaseForShardsIfMissing(shards, INITIAL_POSITION_TRIM_HORIZON, expectedLeaseKeysToCreate, existingLeases);
+    }
+
+
+    /*
+     * Shard structure (each level depicts a stream segment):
+     * 0 1 2 3 4   5- shards till epoch 102
+     * \ / \ / |   |
+     *  6   7  4   5- shards from epoch 103 - 205
+     *   \ /   |  /\
+     *    8    4 9  10 - shards from epoch 206 (open - no ending sequenceNumber)
+     * Missing leases: (0, 6, 8)
      * Initial position: AT_TIMESTAMP(1000)
      * Leases to create: (0)
      */
@@ -2049,6 +2764,8 @@ public class ShardSyncerTest {
         testCheckAndCreateLeaseForShardsIfMissing(shards, INITIAL_POSITION_LATEST, expectedLeaseKeysToCreate, existingLeases);
     }
 
+
+
     private List<KinesisClientLease> createLeasesFromShards(final List<Shard> shards, final ExtendedSequenceNumber checkpoint,
                                                final String leaseOwner) {
         return shards.stream().map(shard -> {
@@ -2083,6 +2800,33 @@ public class ShardSyncerTest {
         lease.setLeaseKey(shardId);
 
         return lease;
+    }
+
+    /**
+     * Helper method to test CheckIfDescendantAndAddNewLeasesForAncestors and verify new leases created with an expected result.
+     * @param shards
+     * @param shardIdsOfCurrentLeases
+     * @param checkpoint
+     * @param expectedShardIdCheckpointMap
+     */
+    private void testCheckIfDescendantAndAddNewLeasesForAncestors(List<Shard> shards, List<String> shardIdsOfCurrentLeases,
+                                                                  InitialPositionInStreamExtended checkpoint, Map<String, ExtendedSequenceNumber> expectedShardIdCheckpointMap) {
+        final List<KinesisClientLease> currentLeases = shardIdsOfCurrentLeases.stream()
+                .map(shardId -> newLease(shardId)).collect(Collectors.toList());
+        final Map<String, Shard> shardIdToShardMap = KinesisShardSyncer.constructShardIdToShardMap(shards);
+        final Map<String, Set<String>> shardIdToChildShardIdsMap =
+                KinesisShardSyncer.constructShardIdToChildShardIdsMap(shardIdToShardMap);
+
+        final LeaseSynchronizer leaseSynchronizer = new NonEmptyLeaseTableSynchronizer(shardIdToShardMap, shardIdToChildShardIdsMap);
+        final List<KinesisClientLease> newLeases =
+                shardSyncer.determineNewLeasesToCreate(leaseSynchronizer, shards, currentLeases, checkpoint);
+
+        Assert.assertEquals(expectedShardIdCheckpointMap.size(), newLeases.size());
+        for (KinesisClientLease lease : newLeases) {
+            Assert.assertTrue("Unexpected lease: " + lease,
+                    expectedShardIdCheckpointMap.containsKey(lease.getLeaseKey()));
+            Assert.assertEquals(expectedShardIdCheckpointMap.get(lease.getLeaseKey()), lease.getCheckpoint());
+        }
     }
 
     /**
